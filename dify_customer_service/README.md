@@ -72,7 +72,7 @@
 
 总入口请先看：
 
-- [README.md](/Users/gallifreycar/Documents/Playground/jianing-dify-pageindex-demo/README.md)
+- [README.md](../README.md)
 
 ## Dify 中要导入的文件
 
@@ -189,5 +189,5 @@
 
 ## 相关文档
 
-- 返回仓库总览：[README.md](/Users/gallifreycar/Documents/Playground/jianing-dify-pageindex-demo/README.md)
-- 查看今天的完整思路和踩坑记录：[实施记录.md](/Users/gallifreycar/Documents/Playground/jianing-dify-pageindex-demo/实施记录.md)
+- 返回仓库总览：[README.md](../README.md)
+- 查看今天的完整思路和踩坑记录：[实施记录.md](../%E5%AE%9E%E6%96%BD%E8%AE%B0%E5%BD%95.md)

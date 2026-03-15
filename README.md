@@ -38,7 +38,7 @@
 
 如果你想看更完整的使用说明，请直接跳到：
 
-- [dify_customer_service/README.md](/Users/gallifreycar/Documents/Playground/jianing-dify-pageindex-demo/dify_customer_service/README.md)
+- [dify_customer_service/README.md](dify_customer_service/README.md)
 
 ## 仓库结构
 
@@ -76,11 +76,11 @@
 
 更细的使用说明可以看：
 
-- [dify_customer_service/README.md](/Users/gallifreycar/Documents/Playground/jianing-dify-pageindex-demo/dify_customer_service/README.md)
+- [dify_customer_service/README.md](dify_customer_service/README.md)
 
 如果你想了解这套方案今天是怎么一步步做出来的、踩了哪些坑、最后怎么解决的，可以看：
 
-- [实施记录.md](/Users/gallifreycar/Documents/Playground/jianing-dify-pageindex-demo/实施记录.md)
+- [实施记录.md](%E5%AE%9E%E6%96%BD%E8%AE%B0%E5%BD%95.md)
 
 ## 说明
 
