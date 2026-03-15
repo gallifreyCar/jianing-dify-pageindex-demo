@@ -427,30 +427,28 @@ workflow:
           provider: langgenius/deepseek/deepseek
         prompt_config:
           jinja2_variables: []
-        prompt_template:
-        - role: system
-          text: ''
-        reasoning_format: tagged
+        code: "import re\n\ndef main(query: str, order_no: str = '') -> dict:\n    text = (query or '').strip()\n    if not text:\n        return {'text': 'other'}\n\n    if order_no:\n        return {'text': 'order'}\n\n    order_patterns = [r'\\bJN\\d{12}\\b', r'\\b[A-Z]{2}\\d{8,}\\b']\n    if any(re.search(pattern, text, re.I) for pattern in order_patterns):\n        return {'text': 'order'}\n\n    order_keywords = ['查订单', '查询订单', '订单号', '订单状态', '退款进度', '催发货', '查一下订单', '帮我查订单', '物流单号', '订单到哪', '什么时候发货']\n    docs_keywords = ['售后', '退货', '退款', '签收', '破损', '少件', '漏发', '质量', '坏了', '故障', '异响', '不能用', '失灵', '质保', '保修', '换新', '维修', '安装', '使用说明', '说明书', '怎么用', '怎么安装']\n\n    if any(keyword in text for keyword in order_keywords):\n        return {'text': 'order'}\n    if any(keyword in text for keyword in docs_keywords):\n        return {'text': 'docs'}\n    if '物流' in text or '快递' in text:\n        if any(keyword in text for keyword in ['破损', '少件', '漏发', '签收异常', '不更新']):\n            return {'text': 'docs'}\n        return {'text': 'order'}\n\n    return {'text': 'other'}\n"
+        code_language: python3
+        desc: ''
+        outputs:
+          text:
+            children: null
+            type: string
         selected: false
-        type: llm
-        variables: []
-        vision:
-          enabled: false
-        title: 一级分类-LLM
-        prompt_template:
-        - role: system
-          text: '你是客服分类器。你的任务是把用户问题分成 order、docs、other 三类，只输出一个英文标签，不要解释。
-
-order：查订单、物流单号、发货进度、退款进度、催发货、订单状态。
-docs：售后规则、退货退款、物流签收、破损少件、质量问题、坏了、故障、异响、不能用、质保、换新、维修、安装、使用说明。
-other：无法判断、闲聊、活动优惠、与售后和订单都无关。
-
-像“质量不行”“东西坏了”“有质量问题”“不能用了”“怎么保修”这类问题，一律输出 warranty 所属的大类 docs，所以这里应输出 docs。
-
-只输出：order 或 docs 或 other。'
-        - role: user
-          text: '用户问题：{{#sys.query#}}'
-      height: 120
+        title: 一级分类-规则
+        type: code
+        variables:
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: query
+        - value_selector:
+          - start
+          - order_no
+          value_type: string
+          variable: order_no
+      height: 100
       id: route_l1_llm
       position:
         x: 340
@@ -503,24 +501,23 @@ other：无法判断、闲聊、活动优惠、与售后和订单都无关。
       type: custom
       width: 244
     - data:
-        <<: *llm_base
-        prompt_template:
-        - role: system
-          text: '你是售后文档场景分类器。只输出一个英文标签：refund、logistics、warranty、usage、other，不要解释。
-
-refund：退货、退款、七天无理由、不想要了、退差价、退款多久到。
-logistics：发货、催发货、快递、签收、破损、少件、漏发、物流不更新。
-warranty：质量问题、质量不行、坏了、损坏、故障、异响、不能用、失灵、保修、质保、换新、维修。
-usage：安装、使用方法、操作步骤、说明书、如何连接、如何开机、如何设置。
-other：以上都不明显匹配。
-
-如果用户在表达商品本身有问题，比如“质量不行”“坏了”“不能用”“有故障”，优先输出 warranty。
-
-只输出：refund 或 logistics 或 warranty 或 usage 或 other。'
-        - role: user
-          text: '用户问题：{{#sys.query#}}'
-        title: 文档场景分类-LLM
-      height: 120
+        code: "def main(query: str) -> dict:\n    text = (query or '').strip()\n    if not text:\n        return {'text': 'other'}\n\n    refund_keywords = ['退货', '退款', '七天无理由', '不想要', '退差价', '退款多久', '退钱']\n    logistics_keywords = ['发货', '催发货', '快递', '签收', '破损', '少件', '漏发', '物流', '不更新']\n    warranty_keywords = ['质量', '坏了', '损坏', '故障', '异响', '不能用', '失灵', '保修', '质保', '换新', '维修']\n    usage_keywords = ['安装', '使用', '说明书', '怎么用', '如何连接', '如何开机', '如何设置', '教程', '步骤']\n\n    if any(keyword in text for keyword in warranty_keywords):\n        return {'text': 'warranty'}\n    if any(keyword in text for keyword in refund_keywords):\n        return {'text': 'refund'}\n    if any(keyword in text for keyword in logistics_keywords):\n        return {'text': 'logistics'}\n    if any(keyword in text for keyword in usage_keywords):\n        return {'text': 'usage'}\n\n    return {'text': 'other'}\n"
+        code_language: python3
+        desc: ''
+        outputs:
+          text:
+            children: null
+            type: string
+        selected: false
+        title: 文档场景分类-规则
+        type: code
+        variables:
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: query
+      height: 100
       id: route_doc_scene_llm
       position:
         x: 960
@@ -603,14 +600,18 @@ other：以上都不明显匹配。
       type: custom
       width: 244
     - data:
-        <<: *llm_base
-        prompt_template:
-        - role: system
-          text: '你是检索改写器。只输出一条用于搜索的短 query。'
-        - role: user
-          text: '场景: 退换货。用户问题: {{#sys.query#}}'
+        desc: ''
+        selected: false
+        template: '{{ query }}'
         title: 构造检索词-退换货
-      height: 120
+        type: template-transform
+        variables:
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: query
+      height: 54
       id: build_query_refund
       position:
         x: 1580
@@ -624,14 +625,18 @@ other：以上都不明显匹配。
       type: custom
       width: 244
     - data:
-        <<: *llm_base
-        prompt_template:
-        - role: system
-          text: '你是检索改写器。只输出一条用于搜索的短 query。'
-        - role: user
-          text: '场景: 物流签收。用户问题: {{#sys.query#}}'
+        desc: ''
+        selected: false
+        template: '{{ query }}'
         title: 构造检索词-物流
-      height: 120
+        type: template-transform
+        variables:
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: query
+      height: 54
       id: build_query_logistics
       position:
         x: 1580
@@ -645,14 +650,18 @@ other：以上都不明显匹配。
       type: custom
       width: 244
     - data:
-        <<: *llm_base
-        prompt_template:
-        - role: system
-          text: '你是检索改写器。只输出一条用于搜索的短 query。'
-        - role: user
-          text: '场景: 质保售后。用户问题: {{#sys.query#}}'
+        desc: ''
+        selected: false
+        template: '{{ query }}'
         title: 构造检索词-质保
-      height: 120
+        type: template-transform
+        variables:
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: query
+      height: 54
       id: build_query_warranty
       position:
         x: 1580
@@ -666,14 +675,18 @@ other：以上都不明显匹配。
       type: custom
       width: 244
     - data:
-        <<: *llm_base
-        prompt_template:
-        - role: system
-          text: '你是检索改写器。只输出一条用于搜索的短 query。'
-        - role: user
-          text: '场景: 安装使用。用户问题: {{#sys.query#}}'
+        desc: ''
+        selected: false
+        template: '{{ query }}'
         title: 构造检索词-安装使用
-      height: 120
+        type: template-transform
+        variables:
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: query
+      height: 54
       id: build_query_usage
       position:
         x: 1580
@@ -687,14 +700,18 @@ other：以上都不明显匹配。
       type: custom
       width: 244
     - data:
-        <<: *llm_base
-        prompt_template:
-        - role: system
-          text: '你是检索改写器。只输出一条用于搜索的短 query。'
-        - role: user
-          text: '场景: 其他售后文档。用户问题: {{#sys.query#}}'
+        desc: ''
+        selected: false
+        template: '{{ query }}'
         title: 构造检索词-其他
-      height: 120
+        type: template-transform
+        variables:
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: query
+      height: 54
       id: build_query_other
       position:
         x: 1580
@@ -882,7 +899,7 @@ other：以上都不明显匹配。
       type: custom
       width: 244
     - data: &json_parse_code
-        code: "import json\n\ndef main(response_json: str) -> dict:\n    try:\n        response_body = json.loads(response_json or '{}')\n    except Exception:\n        return {\n            'answer': response_json or '暂时没有查询到可展示的结果。'\n        }\n\n    answer = response_body.get('answer') or response_json or '暂时没有查询到可展示的结果。'\n    return {\n        'answer': answer\n    }\n"
+        code: "import json\n\ndef main(response_json: str) -> dict:\n    try:\n        response_body = json.loads(response_json or '{}')\n    except Exception:\n        return {\n            'answer': response_json or '我先帮你定位到相关资料了，但暂时没有整理出可直接展示的答案。你可以换个更具体的问法继续问我。'\n        }\n\n    answer = (response_body.get('answer') or '').strip()\n    if answer:\n        return {'answer': answer}\n\n    hits = response_body.get('hits') or []\n    snippets = []\n    for hit in hits[:2]:\n        title = (hit.get('title') or '').strip()\n        text = (hit.get('text') or '').strip().replace('## ', '')\n        snippet = f'{title}：{text[:120]}'.strip('：')\n        if snippet:\n            snippets.append(snippet)\n\n    if snippets:\n        return {\n            'answer': '我先帮你找到这些相关内容：\\n' + '\\n'.join(f'- {item}' for item in snippets)\n        }\n\n    return {\n        'answer': '我先帮你定位到相关资料了，但暂时没有整理出可直接展示的答案。你可以换个更具体的问法继续问我。'\n    }\n"
         code_language: python3
         desc: ''
         outputs:
