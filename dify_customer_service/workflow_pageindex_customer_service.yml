@@ -427,7 +427,7 @@ workflow:
           provider: langgenius/deepseek/deepseek
         prompt_config:
           jinja2_variables: []
-        code: "import re\n\ndef main(query: str, order_no: str = '') -> dict:\n    text = (query or '').strip()\n    if not text:\n        return {'text': 'other'}\n\n    if order_no:\n        return {'text': 'order'}\n\n    order_patterns = [r'\\bJN\\d{12}\\b', r'\\b[A-Z]{2}\\d{8,}\\b']\n    if any(re.search(pattern, text, re.I) for pattern in order_patterns):\n        return {'text': 'order'}\n\n    order_keywords = ['查订单', '查询订单', '订单号', '订单状态', '退款进度', '催发货', '查一下订单', '帮我查订单', '物流单号', '订单到哪', '什么时候发货']\n    docs_keywords = ['售后', '退货', '退款', '签收', '破损', '少件', '漏发', '质量', '坏了', '故障', '异响', '不能用', '失灵', '质保', '保修', '换新', '维修', '安装', '使用说明', '说明书', '怎么用', '怎么安装']\n\n    if any(keyword in text for keyword in order_keywords):\n        return {'text': 'order'}\n    if any(keyword in text for keyword in docs_keywords):\n        return {'text': 'docs'}\n    if '物流' in text or '快递' in text:\n        if any(keyword in text for keyword in ['破损', '少件', '漏发', '签收异常', '不更新']):\n            return {'text': 'docs'}\n        return {'text': 'order'}\n\n    return {'text': 'other'}\n"
+        code: "import re\n\ndef main(query: str, order_no: str = '') -> dict:\n    text = (query or '').strip()\n    normalized = re.sub(r'\\s+', '', text)\n    if not normalized:\n        return {'text': 'other'}\n\n    order_patterns = [r'\\bJN\\d{12}\\b', r'\\b[A-Z]{2}\\d{8,}\\b']\n    if any(re.search(pattern, text, re.I) for pattern in order_patterns):\n        return {'text': 'order'}\n\n    order_keywords = ['查订单', '查询订单', '订单号', '订单状态', '退款进度', '催发货', '查一下订单', '帮我查订单', '物流单号', '订单到哪', '什么时候发货']\n    docs_keywords = ['售后', '退货', '退款', '签收', '破损', '少件', '漏发', '质量', '坏了', '故障', '异响', '不能用', '失灵', '质保', '保修', '换新', '维修', '安装', '使用说明', '说明书', '怎么用', '怎么安装']\n\n    if any(keyword in text for keyword in order_keywords):\n        return {'text': 'order'}\n    if any(keyword in text for keyword in docs_keywords):\n        return {'text': 'docs'}\n    if '物流' in text or '快递' in text:\n        if any(keyword in text for keyword in ['破损', '少件', '漏发', '签收异常', '不更新']):\n            return {'text': 'docs'}\n        return {'text': 'order'}\n\n    # For short or ambiguous inputs, prefer clarification instead of risky routing.\n    if len(normalized) <= 4:\n        return {'text': 'other'}\n\n    if re.fullmatch(r'[A-Za-z0-9\\-_/]+', normalized):\n        return {'text': 'other'}\n\n    return {'text': 'other'}\n"
         code_language: python3
         desc: ''
         outputs:
@@ -443,11 +443,6 @@ workflow:
           - query
           value_type: string
           variable: query
-        - value_selector:
-          - start
-          - order_no
-          value_type: string
-          variable: order_no
       height: 100
       id: route_l1_llm
       position:
@@ -753,7 +748,7 @@ workflow:
           data:
           - key: ''
             type: text
-            value: '{"q":"{{#build_query_refund.text#}}","top_k":5,"scene":"refund"}'
+            value: '{"q":"{{#build_query_refund.output#}}","top_k":5,"scene":"refund"}'
         type: http-request
         url: http://pageindex_official:8790/search
         variables: []
@@ -777,7 +772,7 @@ workflow:
           data:
           - key: ''
             type: text
-            value: '{"q":"{{#build_query_logistics.text#}}","top_k":5,"scene":"logistics"}'
+            value: '{"q":"{{#build_query_logistics.output#}}","top_k":5,"scene":"logistics"}'
         title: PageIndex检索-物流
       height: 120
       id: search_pageindex_logistics
@@ -799,7 +794,7 @@ workflow:
           data:
           - key: ''
             type: text
-            value: '{"q":"{{#build_query_warranty.text#}}","top_k":5,"scene":"warranty"}'
+            value: '{"q":"{{#build_query_warranty.output#}}","top_k":5,"scene":"warranty"}'
         title: PageIndex检索-质保
       height: 120
       id: search_pageindex_warranty
@@ -821,7 +816,7 @@ workflow:
           data:
           - key: ''
             type: text
-            value: '{"q":"{{#build_query_usage.text#}}","top_k":5,"scene":"usage"}'
+            value: '{"q":"{{#build_query_usage.output#}}","top_k":5,"scene":"usage"}'
         title: PageIndex检索-安装使用
       height: 120
       id: search_pageindex_usage
@@ -843,7 +838,7 @@ workflow:
           data:
           - key: ''
             type: text
-            value: '{"q":"{{#build_query_other.text#}}","top_k":5,"scene":"other"}'
+            value: '{"q":"{{#build_query_other.output#}}","top_k":5,"scene":"other"}'
         title: PageIndex检索-其他
       height: 120
       id: search_pageindex_other
@@ -1165,7 +1160,7 @@ workflow:
       type: custom
       width: 244
     - data:
-        answer: "我先帮你定位问题类型。为了更快处理，请补充：\n1) 订单号（如有）\n2) 具体问题（例如退货、物流、保修、安装）\n如果你需要，我也可以直接为你转人工。"
+        answer: "我先帮你确认一下你想处理哪一类问题，这样我才能给到更准确的结果。\n\n你可以直接回复下面任意一种：\n1) 查订单：例如“帮我查订单 JN202603150001”\n2) 退货退款：例如“退货规则是什么”\n3) 物流签收：例如“物流破损怎么处理”\n4) 质保维修：例如“质量不行怎么办”\n5) 安装使用：例如“怎么安装”\n\n如果你愿意，也可以直接把完整问题发我，我继续帮你判断。"
         desc: ''
         selected: false
         title: 回复-兜底
