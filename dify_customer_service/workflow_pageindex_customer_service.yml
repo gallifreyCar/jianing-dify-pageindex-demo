@@ -157,7 +157,7 @@ workflow:
         targetType: llm
       id: docs-other
       source: route_doc_scene_if
-      sourceHandle: false
+      sourceHandle: other
       target: build_query_other
       targetHandle: target
       type: custom
@@ -226,9 +226,81 @@ workflow:
         isInIteration: false
         isInLoop: false
         sourceType: http-request
+        targetType: tool
+      id: refund-parse
+      source: search_pageindex_refund
+      sourceHandle: source
+      target: parse_pageindex_refund
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: http-request
+        targetType: tool
+      id: logistics-parse
+      source: search_pageindex_logistics
+      sourceHandle: source
+      target: parse_pageindex_logistics
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: http-request
+        targetType: tool
+      id: warranty-parse
+      source: search_pageindex_warranty
+      sourceHandle: source
+      target: parse_pageindex_warranty
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: http-request
+        targetType: tool
+      id: usage-parse
+      source: search_pageindex_usage
+      sourceHandle: source
+      target: parse_pageindex_usage
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: http-request
+        targetType: tool
+      id: other-parse
+      source: search_pageindex_other
+      sourceHandle: source
+      target: parse_pageindex_other
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: http-request
+        targetType: tool
+      id: order-parse
+      source: query_order_api
+      sourceHandle: source
+      target: parse_order_api
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: tool
         targetType: answer
       id: refund-answer
-      source: search_pageindex_refund
+      source: parse_pageindex_refund
       sourceHandle: source
       target: answer_doc_refund
       targetHandle: target
@@ -237,10 +309,10 @@ workflow:
     - data:
         isInIteration: false
         isInLoop: false
-        sourceType: http-request
+        sourceType: tool
         targetType: answer
       id: logistics-answer
-      source: search_pageindex_logistics
+      source: parse_pageindex_logistics
       sourceHandle: source
       target: answer_doc_logistics
       targetHandle: target
@@ -249,10 +321,10 @@ workflow:
     - data:
         isInIteration: false
         isInLoop: false
-        sourceType: http-request
+        sourceType: tool
         targetType: answer
       id: warranty-answer
-      source: search_pageindex_warranty
+      source: parse_pageindex_warranty
       sourceHandle: source
       target: answer_doc_warranty
       targetHandle: target
@@ -261,10 +333,10 @@ workflow:
     - data:
         isInIteration: false
         isInLoop: false
-        sourceType: http-request
+        sourceType: tool
         targetType: answer
       id: usage-answer
-      source: search_pageindex_usage
+      source: parse_pageindex_usage
       sourceHandle: source
       target: answer_doc_usage
       targetHandle: target
@@ -273,10 +345,10 @@ workflow:
     - data:
         isInIteration: false
         isInLoop: false
-        sourceType: http-request
+        sourceType: tool
         targetType: answer
       id: other-answer
-      source: search_pageindex_other
+      source: parse_pageindex_other
       sourceHandle: source
       target: answer_doc_other
       targetHandle: target
@@ -285,10 +357,10 @@ workflow:
     - data:
         isInIteration: false
         isInLoop: false
-        sourceType: http-request
+        sourceType: tool
         targetType: answer
       id: order-answer
-      source: query_order_api
+      source: parse_order_api
       sourceHandle: source
       target: answer_order
       targetHandle: target
@@ -351,8 +423,8 @@ workflow:
           completion_params:
             temperature: 0
           mode: chat
-          name: gpt-4o-mini
-          provider: langgenius/openai/openai
+          name: deepseek-chat
+          provider: langgenius/deepseek/deepseek
         prompt_config:
           jinja2_variables: []
         prompt_template:
@@ -367,9 +439,17 @@ workflow:
         title: 一级分类-LLM
         prompt_template:
         - role: system
-          text: '你是客服分类器。只输出一个英文标签：order、docs、other。'
+          text: '你是客服分类器。你的任务是把用户问题分成 order、docs、other 三类，只输出一个英文标签，不要解释。
+
+order：查订单、物流单号、发货进度、退款进度、催发货、订单状态。
+docs：售后规则、退货退款、物流签收、破损少件、质量问题、坏了、故障、异响、不能用、质保、换新、维修、安装、使用说明。
+other：无法判断、闲聊、活动优惠、与售后和订单都无关。
+
+像“质量不行”“东西坏了”“有质量问题”“不能用了”“怎么保修”这类问题，一律输出 warranty 所属的大类 docs，所以这里应输出 docs。
+
+只输出：order 或 docs 或 other。'
         - role: user
-          text: '用户问题：{{#start.user_query#}}'
+          text: '用户问题：{{#sys.query#}}'
       height: 120
       id: route_l1_llm
       position:
@@ -426,9 +506,19 @@ workflow:
         <<: *llm_base
         prompt_template:
         - role: system
-          text: '你是售后文档场景分类器。只输出一个英文标签：refund、logistics、warranty、usage、other。'
+          text: '你是售后文档场景分类器。只输出一个英文标签：refund、logistics、warranty、usage、other，不要解释。
+
+refund：退货、退款、七天无理由、不想要了、退差价、退款多久到。
+logistics：发货、催发货、快递、签收、破损、少件、漏发、物流不更新。
+warranty：质量问题、质量不行、坏了、损坏、故障、异响、不能用、失灵、保修、质保、换新、维修。
+usage：安装、使用方法、操作步骤、说明书、如何连接、如何开机、如何设置。
+other：以上都不明显匹配。
+
+如果用户在表达商品本身有问题，比如“质量不行”“坏了”“不能用”“有故障”，优先输出 warranty。
+
+只输出：refund 或 logistics 或 warranty 或 usage 或 other。'
         - role: user
-          text: '用户问题：{{#start.user_query#}}'
+          text: '用户问题：{{#sys.query#}}'
         title: 文档场景分类-LLM
       height: 120
       id: route_doc_scene_llm
@@ -485,6 +575,16 @@ workflow:
             - route_doc_scene_llm
             - text
           logical_operator: and
+        - case_id: other
+          conditions:
+          - comparison_operator: contains
+            id: doc-other-cond
+            value: other
+            varType: string
+            variable_selector:
+            - route_doc_scene_llm
+            - text
+          logical_operator: and
         desc: ''
         selected: false
         title: 文档场景分支
@@ -508,7 +608,7 @@ workflow:
         - role: system
           text: '你是检索改写器。只输出一条用于搜索的短 query。'
         - role: user
-          text: '场景: 退换货。用户问题: {{#start.user_query#}}'
+          text: '场景: 退换货。用户问题: {{#sys.query#}}'
         title: 构造检索词-退换货
       height: 120
       id: build_query_refund
@@ -529,7 +629,7 @@ workflow:
         - role: system
           text: '你是检索改写器。只输出一条用于搜索的短 query。'
         - role: user
-          text: '场景: 物流签收。用户问题: {{#start.user_query#}}'
+          text: '场景: 物流签收。用户问题: {{#sys.query#}}'
         title: 构造检索词-物流
       height: 120
       id: build_query_logistics
@@ -550,7 +650,7 @@ workflow:
         - role: system
           text: '你是检索改写器。只输出一条用于搜索的短 query。'
         - role: user
-          text: '场景: 质保售后。用户问题: {{#start.user_query#}}'
+          text: '场景: 质保售后。用户问题: {{#sys.query#}}'
         title: 构造检索词-质保
       height: 120
       id: build_query_warranty
@@ -571,7 +671,7 @@ workflow:
         - role: system
           text: '你是检索改写器。只输出一条用于搜索的短 query。'
         - role: user
-          text: '场景: 安装使用。用户问题: {{#start.user_query#}}'
+          text: '场景: 安装使用。用户问题: {{#sys.query#}}'
         title: 构造检索词-安装使用
       height: 120
       id: build_query_usage
@@ -592,7 +692,7 @@ workflow:
         - role: system
           text: '你是检索改写器。只输出一条用于搜索的短 query。'
         - role: user
-          text: '场景: 其他售后文档。用户问题: {{#start.user_query#}}'
+          text: '场景: 其他售后文档。用户问题: {{#sys.query#}}'
         title: 构造检索词-其他
       height: 120
       id: build_query_other
@@ -750,7 +850,7 @@ workflow:
           data:
           - key: ''
             type: text
-            value: '{"order_no":"{{#start.order_no#}}","phone_tail":"{{#start.phone_tail#}}","user_query":"{{#start.user_query#}}"}'
+            value: '{"order_no":"{{#start.order_no#}}","phone_tail":"{{#start.phone_tail#}}","user_query":"{{#sys.query#}}"}'
         desc: ''
         headers: 'Content-Type:application/json'
         method: post
@@ -781,8 +881,154 @@ workflow:
       targetPosition: left
       type: custom
       width: 244
+    - data: &json_parse_code
+        code: "import json\n\ndef main(response_json: str) -> dict:\n    try:\n        response_body = json.loads(response_json or '{}')\n    except Exception:\n        return {\n            'answer': response_json or '暂时没有查询到可展示的结果。'\n        }\n\n    answer = response_body.get('answer') or response_json or '暂时没有查询到可展示的结果。'\n    return {\n        'answer': answer\n    }\n"
+        code_language: python3
+        desc: ''
+        outputs:
+          answer:
+            children: null
+            type: string
+        selected: false
+        title: 解析JSON-退换货
+        type: code
+        variables:
+        - value_selector:
+          - search_pageindex_refund
+          - body
+          value_type: string
+          variable: response_json
+      height: 90
+      id: parse_pageindex_refund
+      position:
+        x: 2220
+        y: 20
+      positionAbsolute:
+        x: 2220
+        y: 20
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
     - data:
-        answer: "基于知识库检索结果（退换货）：\n{{#search_pageindex_refund.body#}}"
+        <<: *json_parse_code
+        title: 解析JSON-物流
+        variables:
+        - value_selector:
+          - search_pageindex_logistics
+          - body
+          value_type: string
+          variable: response_json
+      height: 90
+      id: parse_pageindex_logistics
+      position:
+        x: 2220
+        y: 170
+      positionAbsolute:
+        x: 2220
+        y: 170
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        <<: *json_parse_code
+        title: 解析JSON-质保
+        variables:
+        - value_selector:
+          - search_pageindex_warranty
+          - body
+          value_type: string
+          variable: response_json
+      height: 90
+      id: parse_pageindex_warranty
+      position:
+        x: 2220
+        y: 320
+      positionAbsolute:
+        x: 2220
+        y: 320
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        <<: *json_parse_code
+        title: 解析JSON-安装使用
+        variables:
+        - value_selector:
+          - search_pageindex_usage
+          - body
+          value_type: string
+          variable: response_json
+      height: 90
+      id: parse_pageindex_usage
+      position:
+        x: 2220
+        y: 470
+      positionAbsolute:
+        x: 2220
+        y: 470
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        <<: *json_parse_code
+        title: 解析JSON-其他文档
+        variables:
+        - value_selector:
+          - search_pageindex_other
+          - body
+          value_type: string
+          variable: response_json
+      height: 90
+      id: parse_pageindex_other
+      position:
+        x: 2220
+        y: 620
+      positionAbsolute:
+        x: 2220
+        y: 620
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        code: "import json\n\ndef main(response_json: str) -> dict:\n    try:\n        response_body = json.loads(response_json or '{}')\n    except Exception:\n        return {\n            'formatted_answer': response_json or '订单接口返回异常，请稍后重试。'\n        }\n\n    order_no = response_body.get('order_no') or '未知订单号'\n    status = response_body.get('status') or '未知'\n    items = response_body.get('items') or []\n    if isinstance(items, list):\n        items_text = '、'.join(str(item) for item in items) if items else '暂无商品信息'\n    else:\n        items_text = str(items)\n    carrier = response_body.get('carrier') or '暂无'\n    tracking_no = response_body.get('tracking_no') or '暂无'\n    refund_status = response_body.get('refund_status') or '暂无'\n    latest_progress = response_body.get('latest_progress') or '暂无'\n\n    formatted_answer = (\n        f'我帮你查到订单 {order_no} 了。\\n\\n'\n        f'当前状态：{status}\\n'\n        f'商品：{items_text}\\n'\n        f'物流公司：{carrier}\\n'\n        f'物流单号：{tracking_no}\\n'\n        f'退款状态：{refund_status}\\n'\n        f'最新进度：{latest_progress}\\n\\n'\n        '如果你还想继续处理退款、催发货或售后问题，也可以直接继续说。'\n    )\n\n    return {\n        'formatted_answer': formatted_answer\n    }\n"
+        code_language: python3
+        title: 解析JSON-订单
+        type: code
+        outputs:
+          formatted_answer:
+            children: null
+            type: string
+        variables:
+        - value_selector:
+          - query_order_api
+          - body
+          value_type: string
+          variable: response_json
+      height: 90
+      id: parse_order_api
+      position:
+        x: 1270
+        y: 860
+      positionAbsolute:
+        x: 1270
+        y: 860
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        answer: "{{#parse_pageindex_refund.answer#}}\n\n如需我继续帮你判断是否符合退换条件，也可以把订单号发我。"
         desc: ''
         selected: false
         title: 回复-退换货
@@ -791,10 +1037,10 @@ workflow:
       height: 105
       id: answer_doc_refund
       position:
-        x: 2220
+        x: 2540
         y: 20
       positionAbsolute:
-        x: 2220
+        x: 2540
         y: 20
       selected: false
       sourcePosition: right
@@ -802,7 +1048,7 @@ workflow:
       type: custom
       width: 244
     - data:
-        answer: "基于知识库检索结果（物流签收）：\n{{#search_pageindex_logistics.body#}}"
+        answer: "{{#parse_pageindex_logistics.answer#}}\n\n如果你方便，也可以继续把订单号或异常情况发我，我帮你往下看。"
         desc: ''
         selected: false
         title: 回复-物流
@@ -811,10 +1057,10 @@ workflow:
       height: 105
       id: answer_doc_logistics
       position:
-        x: 2220
+        x: 2540
         y: 170
       positionAbsolute:
-        x: 2220
+        x: 2540
         y: 170
       selected: false
       sourcePosition: right
@@ -822,7 +1068,7 @@ workflow:
       type: custom
       width: 244
     - data:
-        answer: "基于知识库检索结果（质保售后）：\n{{#search_pageindex_warranty.body#}}"
+        answer: "{{#parse_pageindex_warranty.answer#}}\n\n如果你愿意，我也可以继续帮你判断是走换新、维修还是质保。"
         desc: ''
         selected: false
         title: 回复-质保
@@ -831,10 +1077,10 @@ workflow:
       height: 105
       id: answer_doc_warranty
       position:
-        x: 2220
+        x: 2540
         y: 320
       positionAbsolute:
-        x: 2220
+        x: 2540
         y: 320
       selected: false
       sourcePosition: right
@@ -842,7 +1088,7 @@ workflow:
       type: custom
       width: 244
     - data:
-        answer: "基于知识库检索结果（安装使用）：\n{{#search_pageindex_usage.body#}}"
+        answer: "{{#parse_pageindex_usage.answer#}}\n\n如果你现在方便，也可以把具体型号或报错现象发我，我继续帮你排查。"
         desc: ''
         selected: false
         title: 回复-安装使用
@@ -851,10 +1097,10 @@ workflow:
       height: 105
       id: answer_doc_usage
       position:
-        x: 2220
+        x: 2540
         y: 470
       positionAbsolute:
-        x: 2220
+        x: 2540
         y: 470
       selected: false
       sourcePosition: right
@@ -862,7 +1108,7 @@ workflow:
       type: custom
       width: 244
     - data:
-        answer: "基于知识库检索结果（其他文档问题）：\n{{#search_pageindex_other.body#}}"
+        answer: "{{#parse_pageindex_other.answer#}}\n\n如果这个问题还没解决，你也可以补充订单号、照片或更具体的现象，我继续帮你处理。"
         desc: ''
         selected: false
         title: 回复-其他文档
@@ -871,10 +1117,10 @@ workflow:
       height: 105
       id: answer_doc_other
       position:
-        x: 2220
+        x: 2540
         y: 620
       positionAbsolute:
-        x: 2220
+        x: 2540
         y: 620
       selected: false
       sourcePosition: right
@@ -882,7 +1128,7 @@ workflow:
       type: custom
       width: 244
     - data:
-        answer: "订单查询结果如下：\n{{#query_order_api.body#}}"
+        answer: "{{#parse_order_api.formatted_answer#}}"
         desc: ''
         selected: false
         title: 回复-订单查询
@@ -891,10 +1137,10 @@ workflow:
       height: 105
       id: answer_order
       position:
-        x: 1270
+        x: 1590
         y: 860
       positionAbsolute:
-        x: 1270
+        x: 1590
         y: 860
       selected: false
       sourcePosition: right
