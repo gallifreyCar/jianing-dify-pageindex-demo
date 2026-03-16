@@ -157,10 +157,34 @@ workflow:
     - data:
         isInIteration: false
         isInLoop: false
-        sourceType: llm
-        targetType: if-else
+        sourceType: code
+        targetType: llm
       id: docs-llm-if
       source: route_doc_scene_llm
+      sourceHandle: source
+      target: route_doc_scene_deepseek
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: llm
+        targetType: code
+      id: docs-deepseek-merge
+      source: route_doc_scene_deepseek
+      sourceHandle: source
+      target: merge_doc_scene_classifier
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: assigner
+      id: docs-merge-assign
+      source: merge_doc_scene_classifier
       sourceHandle: source
       target: assign_last_doc_scene
       targetHandle: target
@@ -497,7 +521,7 @@ workflow:
           provider: langgenius/deepseek/deepseek
         prompt_config:
           jinja2_variables: []
-        code: "import re\n\nLOGISTICS_EXCEPTION_KEYWORDS = ['破损', '少件', '漏发', '签收异常', '不更新']\nORDER_DIRECT_KEYWORDS = ['查订单', '查询订单', '订单号', '订单状态', '退款进度', '催发货', '查一下订单', '帮我查订单', '查一下我订单', '我订单', '物流单号', '订单到哪', '什么时候发货', '什么时候到', '多久到', '到哪了', '到了吗', '快递什么时候到', '物流什么时候到']\nORDER_CONTEXT_KEYWORDS = ['这个订单', '这单', '这一单', '这个快递', '这个物流', '不是已经查到我订单', '为什么还要给你订单', '为什么还要提供', '你不是有订单', '已经查到我订单', '我订单号']\nORDER_PRODUCT_KEYWORDS = ['型号', '商品', '商品名', '这个商品', '这个订单商品', '这款', '这个杯子']\nREFUND_KEYWORDS = ['退货', '退款', '七天无理由', '不想要', '退差价', '退款多久', '退钱', '订单退款', '能退款', '能退吗', '可以退款', '可以退吗', '退款吧', '退货吧', '售后规则', '售后规则呢']\nUSAGE_KEYWORDS = ['安装', '使用', '说明书', '怎么用', '怎么安装', '安装说明', '如何连接', '如何开机', '如何设置', '教程', '步骤', '怎么装', '安装步骤']\nWARRANTY_KEYWORDS = ['质量', '坏了', '损坏', '故障', '异响', '不能用', '失灵', '保修', '质保', '换新', '维修', '能换新吗', '能修吗']\nDOCS_GENERIC_KEYWORDS = ['售后', '签收', '规则']\nFOLLOWUP_PREFIXES = ['这个', '那这个', '那', '那怎么', '这怎么', '怎么办', '怎么处理', '然后呢', '那呢', '这个呢']\nDOCS_FOLLOWUP_KEYWORDS = ['能退吗', '可以退吗', '退款呢', '退货呢', '怎么装', '说明书呢', '安装步骤呢', '能换新吗', '能修吗', '怎么修', '质保多久', '保修多久', '规则呢', '售后规则呢']\n\n\ndef contains_any(text: str, keywords: list[str]) -> bool:\n    return any(keyword in text for keyword in keywords)\n\n\ndef main(query: str, order_no: str = '', last_intent: str = 'other', last_doc_scene: str = 'other') -> dict:\n    text = (query or '').strip()\n    normalized = re.sub(r'\\s+', '', text)\n    remembered_order = (order_no or '').strip()\n    last_intent = (last_intent or 'other').strip()\n    last_doc_scene = (last_doc_scene or 'other').strip()\n    if not normalized:\n        return {'text': 'other'}\n\n    order_patterns = [r'\\bJN\\d{12}\\b', r'\\b[A-Z]{2}\\d{8,}\\b']\n    if any(re.search(pattern, text, re.I) for pattern in order_patterns):\n        return {'text': 'order'}\n\n    if last_intent == 'docs' and last_doc_scene != 'other':\n        if contains_any(text, DOCS_FOLLOWUP_KEYWORDS):\n            return {'text': 'docs'}\n        if contains_any(text, FOLLOWUP_PREFIXES) and len(normalized) <= 12:\n            return {'text': 'docs'}\n        if normalized.endswith('呢') and len(normalized) <= 8:\n            return {'text': 'docs'}\n\n    if contains_any(text, FOLLOWUP_PREFIXES):\n        if last_intent == 'docs' and (contains_any(text, REFUND_KEYWORDS + USAGE_KEYWORDS + WARRANTY_KEYWORDS) or len(normalized) <= 10):\n            return {'text': 'docs'}\n        if last_intent == 'order' and (remembered_order or contains_any(text, ORDER_DIRECT_KEYWORDS + ORDER_CONTEXT_KEYWORDS + ORDER_PRODUCT_KEYWORDS)):\n            return {'text': 'order'}\n\n    order_score = 0\n    docs_score = 0\n\n    if contains_any(text, ORDER_DIRECT_KEYWORDS):\n        order_score += 3\n    if contains_any(text, REFUND_KEYWORDS + USAGE_KEYWORDS + WARRANTY_KEYWORDS + DOCS_GENERIC_KEYWORDS):\n        docs_score += 3\n\n    if ('物流' in text or '快递' in text or '发货' in text):\n        if contains_any(text, LOGISTICS_EXCEPTION_KEYWORDS):\n            docs_score += 3\n        else:\n            order_score += 2\n\n    if remembered_order:\n        if contains_any(text, ORDER_CONTEXT_KEYWORDS):\n            order_score += 3\n        if contains_any(text, ORDER_PRODUCT_KEYWORDS):\n            order_score += 1\n        if contains_any(text, REFUND_KEYWORDS):\n            docs_score += 2\n        if contains_any(text, USAGE_KEYWORDS + WARRANTY_KEYWORDS):\n            docs_score += 2\n        if normalized in ['什么时候到啊', '什么时候到', '到啊', '到没', '到了吗', '查一下我订单', '查一下我订单吧']:\n            order_score += 3\n        if len(normalized) <= 8 and contains_any(text, ['退款', '退货', '物流', '快递', '发货', '型号', '商品', '说明书']):\n            order_score += 1\n\n    if last_intent == 'docs' and last_doc_scene != 'other' and len(normalized) <= 10 and contains_any(text, ['能退吗', '能退', '怎么装', '怎么修', '怎么用', '怎么办', '怎么处理', '怎么安装', '能换新吗', '能修吗', '规则呢']):\n        docs_score += 2\n\n    if docs_score >= order_score + 1 and docs_score > 0:\n        return {'text': 'docs'}\n    if order_score > 0:\n        return {'text': 'order'}\n\n    if len(normalized) <= 4:\n        return {'text': last_intent if last_intent == 'docs' and last_doc_scene != 'other' else ('order' if last_intent == 'order' and remembered_order else 'other')}\n\n    if re.fullmatch(r'[A-Za-z0-9\\-_/]+', normalized):\n        return {'text': 'other'}\n\n    return {'text': 'other'}\n"
+        code: "import re\n\nLOGISTICS_EXCEPTION_KEYWORDS = ['破损', '少件', '漏发', '签收异常', '不更新']\nORDER_DIRECT_KEYWORDS = ['查订单', '查询订单', '订单号', '订单状态', '退款进度', '催发货', '查一下订单', '帮我查订单', '查一下我订单', '我订单', '物流单号', '订单到哪', '什么时候发货', '什么时候到', '多久到', '到哪了', '到了吗', '快递什么时候到', '物流什么时候到']\nORDER_CONTEXT_KEYWORDS = ['这个订单', '这单', '这一单', '这个快递', '这个物流', '不是已经查到我订单', '为什么还要给你订单', '为什么还要提供', '你不是有订单', '已经查到我订单', '我订单号']\nORDER_PRODUCT_KEYWORDS = ['型号', '商品', '商品名', '这个商品', '这个订单商品', '这款', '这个杯子']\nREFUND_KEYWORDS = ['退货', '退款', '七天无理由', '不想要', '退差价', '退款多久', '退钱', '订单退款', '能退款', '能退吗', '可以退款', '可以退吗', '退款吧', '退货吧', '售后规则', '售后规则呢']\nUSAGE_KEYWORDS = ['安装', '使用', '说明书', '怎么用', '怎么安装', '安装说明', '如何连接', '如何开机', '如何设置', '教程', '步骤', '怎么装', '安装步骤', '装不上', '不会装', '连不上']\nWARRANTY_KEYWORDS = ['质量', '坏了', '损坏', '故障', '异响', '不能用', '失灵', '保修', '质保', '换新', '维修', '能换新吗', '能修吗', '返修', '修理']\nDOCS_GENERIC_KEYWORDS = ['售后', '签收', '规则']\nFOLLOWUP_PREFIXES = ['这个', '那这个', '那', '那怎么', '这怎么', '怎么办', '怎么处理', '然后呢', '那呢', '这个呢']\nDOCS_FOLLOWUP_KEYWORDS = ['能退吗', '可以退吗', '退款呢', '退货呢', '怎么装', '说明书呢', '安装步骤呢', '能换新吗', '能修吗', '怎么修', '质保多久', '保修多久', '规则呢', '售后规则呢']\n\n\ndef contains_any(text: str, keywords: list[str]) -> bool:\n    return any(keyword in text for keyword in keywords)\n\n\ndef main(query: str, order_no: str = '', last_intent: str = 'other', last_doc_scene: str = 'other') -> dict:\n    text = (query or '').strip()\n    normalized = re.sub(r'\\s+', '', text)\n    remembered_order = (order_no or '').strip()\n    last_intent = (last_intent or 'other').strip()\n    last_doc_scene = (last_doc_scene or 'other').strip()\n    if not normalized:\n        return {'text': 'other'}\n\n    order_patterns = [r'\\bJN\\d{12}\\b', r'\\b[A-Z]{2}\\d{8,}\\b']\n    if any(re.search(pattern, text, re.I) for pattern in order_patterns):\n        return {'text': 'order'}\n\n    if last_intent == 'docs' and last_doc_scene != 'other':\n        if contains_any(text, DOCS_FOLLOWUP_KEYWORDS):\n            return {'text': 'docs'}\n        if contains_any(text, FOLLOWUP_PREFIXES) and len(normalized) <= 12:\n            return {'text': 'docs'}\n        if normalized.endswith('呢') and len(normalized) <= 8:\n            return {'text': 'docs'}\n\n    if contains_any(text, FOLLOWUP_PREFIXES):\n        if last_intent == 'docs' and (contains_any(text, REFUND_KEYWORDS + USAGE_KEYWORDS + WARRANTY_KEYWORDS) or len(normalized) <= 10):\n            return {'text': 'docs'}\n        if last_intent == 'order' and (remembered_order or contains_any(text, ORDER_DIRECT_KEYWORDS + ORDER_CONTEXT_KEYWORDS + ORDER_PRODUCT_KEYWORDS)):\n            return {'text': 'order'}\n\n    order_score = 0\n    docs_score = 0\n\n    if contains_any(text, ORDER_DIRECT_KEYWORDS):\n        order_score += 3\n    if contains_any(text, REFUND_KEYWORDS + USAGE_KEYWORDS + WARRANTY_KEYWORDS + DOCS_GENERIC_KEYWORDS):\n        docs_score += 3\n\n    if ('物流' in text or '快递' in text or '发货' in text):\n        if contains_any(text, LOGISTICS_EXCEPTION_KEYWORDS):\n            docs_score += 3\n        else:\n            order_score += 2\n\n    if remembered_order:\n        if contains_any(text, ORDER_CONTEXT_KEYWORDS):\n            order_score += 3\n        if contains_any(text, ORDER_PRODUCT_KEYWORDS):\n            order_score += 1\n        if contains_any(text, REFUND_KEYWORDS):\n            docs_score += 2\n        if contains_any(text, USAGE_KEYWORDS + WARRANTY_KEYWORDS):\n            docs_score += 2\n        if normalized in ['什么时候到啊', '什么时候到', '到啊', '到没', '到了吗', '查一下我订单', '查一下我订单吧']:\n            order_score += 3\n        if len(normalized) <= 8 and contains_any(text, ['退款', '退货', '物流', '快递', '发货', '型号', '商品', '说明书']):\n            order_score += 1\n\n    if last_intent == 'docs' and last_doc_scene != 'other' and len(normalized) <= 10 and contains_any(text, ['能退吗', '能退', '怎么装', '怎么修', '怎么用', '怎么办', '怎么处理', '怎么安装', '能换新吗', '能修吗', '规则呢']):\n        docs_score += 2\n\n    if docs_score >= order_score + 1 and docs_score > 0:\n        return {'text': 'docs'}\n    if order_score > 0:\n        return {'text': 'order'}\n\n    if len(normalized) <= 4:\n        return {'text': last_intent if last_intent == 'docs' and last_doc_scene != 'other' else ('order' if last_intent == 'order' and remembered_order else 'other')}\n\n    if re.fullmatch(r'[A-Za-z0-9\\-_/]+', normalized):\n        return {'text': 'other'}\n\n    return {'text': 'other'}\n"
         code_language: python3
         desc: ''
         outputs:
@@ -610,7 +634,7 @@ workflow:
       type: custom
       width: 244
     - data:
-        code: "def main(query: str, last_doc_scene: str = 'other') -> dict:\n    text = (query or '').strip()\n    normalized = ''.join(text.split())\n    last_doc_scene = (last_doc_scene or 'other').strip()\n    if not text:\n        return {'text': 'other'}\n\n    refund_keywords = ['退货', '退款', '七天无理由', '不想要', '退差价', '退款多久', '退钱', '订单退款', '能退款', '能退吗', '可以退款', '可以退吗', '售后规则', '售后规则呢', '规则呢', '多久到账']\n    logistics_keywords = ['发货', '催发货', '快递', '签收', '破损', '少件', '漏发', '物流', '不更新', '什么时候到', '多久到', '到哪了']\n    warranty_keywords = ['质量', '坏了', '损坏', '故障', '异响', '不能用', '失灵', '保修', '质保', '换新', '维修', '杯子坏了', '能换新吗', '能修吗', '保修多久', '质保多久']\n    usage_keywords = ['安装', '使用', '说明书', '怎么用', '如何连接', '如何开机', '如何设置', '教程', '步骤', '安装说明', '型号', '怎么装', '安装步骤']\n    generic_followups = ['这个', '那这个', '那怎么', '怎么办', '怎么处理', '然后呢', '那呢', '那这个呢', '这个呢']\n\n    if any(keyword in text for keyword in warranty_keywords):\n        return {'text': 'warranty'}\n    if any(keyword in text for keyword in refund_keywords):\n        return {'text': 'refund'}\n    if any(keyword in text for keyword in logistics_keywords):\n        return {'text': 'logistics'}\n    if any(keyword in text for keyword in usage_keywords):\n        return {'text': 'usage'}\n\n    if last_doc_scene in ['refund', 'logistics', 'warranty', 'usage']:\n        if len(normalized) <= 10 and any(keyword in text for keyword in generic_followups):\n            return {'text': last_doc_scene}\n        if len(normalized) <= 8 and normalized.endswith('呢'):\n            return {'text': last_doc_scene}\n\n    return {'text': 'other'}\n"
+        code: "def main(query: str, last_doc_scene: str = 'other') -> dict:\n    text = (query or '').strip()\n    normalized = ''.join(text.split())\n    last_doc_scene = (last_doc_scene or 'other').strip()\n    if not text:\n        return {'text': 'other'}\n\n    refund_keywords = ['退货', '退款', '七天无理由', '不想要', '退差价', '退款多久', '退钱', '订单退款', '能退款', '能退吗', '可以退款', '可以退吗', '售后规则', '售后规则呢', '规则呢', '多久到账']\n    logistics_keywords = ['发货', '催发货', '快递', '签收', '破损', '少件', '漏发', '物流', '不更新', '什么时候到', '多久到', '到哪了']\n    warranty_keywords = ['质量', '坏了', '损坏', '故障', '异响', '不能用', '失灵', '保修', '质保', '换新', '维修', '杯子坏了', '能换新吗', '能修吗', '保修多久', '质保多久', '返修', '修理']\n    usage_keywords = ['安装', '使用', '说明书', '怎么用', '如何连接', '如何开机', '如何设置', '教程', '步骤', '安装说明', '型号', '怎么装', '安装步骤', '装不上', '不会装', '连不上']\n    generic_followups = ['这个', '那这个', '那怎么', '怎么办', '怎么处理', '然后呢', '那呢', '那这个呢', '这个呢']\n\n    if any(keyword in text for keyword in warranty_keywords):\n        return {'text': 'warranty'}\n    if any(keyword in text for keyword in refund_keywords):\n        return {'text': 'refund'}\n    if any(keyword in text for keyword in logistics_keywords):\n        return {'text': 'logistics'}\n    if any(keyword in text for keyword in usage_keywords):\n        return {'text': 'usage'}\n\n    if last_doc_scene in ['refund', 'logistics', 'warranty', 'usage']:\n        if len(normalized) <= 10 and any(keyword in text for keyword in generic_followups):\n            return {'text': last_doc_scene}\n        if len(normalized) <= 8 and normalized.endswith('呢'):\n            return {'text': last_doc_scene}\n\n    return {'text': 'other'}\n"
         code_language: python3
         desc: ''
         outputs:
@@ -618,7 +642,7 @@ workflow:
             children: null
             type: string
         selected: false
-        title: 文档场景分类-规则
+        title: 文档场景分类-规则兜底
         type: code
         variables:
         - value_selector:
@@ -645,6 +669,105 @@ workflow:
       type: custom
       width: 244
     - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: 使用 DeepSeek 对文档问题进行语义场景分类
+        memory:
+          enabled: false
+          window:
+            enabled: false
+            size: 10
+        model:
+          completion_params:
+            temperature: 0
+            max_tokens: 16
+          mode: chat
+          name: deepseek-chat
+          provider: langgenius/deepseek/deepseek
+        prompt_template:
+        - role: system
+          text: '你是售后客服文档场景分类器。请根据用户问题，只输出一个小写标签，不要输出解释、标点或多余文本。可选标签只有：refund、logistics、warranty、usage、other。
+
+            标签含义：
+            refund：退货退款、售后规则、退款时效、是否能退
+            logistics：发货、物流进度、签收异常、破损、少件、漏发
+            warranty：质量问题、故障、维修、换新、保修、质保
+            usage：安装、使用、说明书、型号对应使用方法
+            other：以上都不属于，或信息不足'
+        - role: user
+          text: '最近一次文档场景：{{#conversation.last_doc_scene#}}
+
+            用户问题：{{#sys.query#}}
+
+            只输出标签。'
+        retry_config:
+          enabled: false
+          exponential_backoff:
+            enabled: false
+            max_interval: 10000
+            multiplier: 2
+          max_retries: 1
+          retry_interval: 1000
+        selected: false
+        structured_output:
+          enabled: false
+        title: 文档场景分类-DeepSeek
+        type: llm
+        variables: []
+        vision:
+          configs:
+            variable_selector: []
+          enabled: false
+      height: 90
+      id: route_doc_scene_deepseek
+      position:
+        x: 1260
+        y: 20
+      positionAbsolute:
+        x: 1260
+        y: 20
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        code: "def main(llm_text: str = '', rule_text: str = 'other') -> dict:\n    valid_labels = ['refund', 'logistics', 'warranty', 'usage', 'other']\n    raw = (llm_text or '').strip().lower()\n    rule_text = (rule_text or 'other').strip().lower()\n\n    label = 'other'\n    for item in valid_labels:\n        if raw == item or item in raw:\n            label = item\n            break\n\n    # Prefer DeepSeek when it gives a concrete scene, otherwise fall back to the stable rule result.\n    if label in ['refund', 'logistics', 'warranty', 'usage']:\n        return {'text': label}\n    if rule_text in ['refund', 'logistics', 'warranty', 'usage']:\n        return {'text': rule_text}\n    return {'text': 'other'}\n"
+        code_language: python3
+        desc: ''
+        outputs:
+          text:
+            children: null
+            type: string
+        selected: false
+        title: 合并文档场景分类
+        type: code
+        variables:
+        - value_selector:
+          - route_doc_scene_deepseek
+          - text
+          value_type: string
+          variable: llm_text
+        - value_selector:
+          - route_doc_scene_llm
+          - text
+          value_type: string
+          variable: rule_text
+      height: 90
+      id: merge_doc_scene_classifier
+      position:
+        x: 1260
+        y: 120
+      positionAbsolute:
+        x: 1260
+        y: 120
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
         cases:
         - case_id: refund
           conditions:
@@ -653,7 +776,7 @@ workflow:
             value: refund
             varType: string
             variable_selector:
-            - route_doc_scene_llm
+            - merge_doc_scene_classifier
             - text
           logical_operator: and
         - case_id: logistics
@@ -663,7 +786,7 @@ workflow:
             value: logistics
             varType: string
             variable_selector:
-            - route_doc_scene_llm
+            - merge_doc_scene_classifier
             - text
           logical_operator: and
         - case_id: warranty
@@ -673,7 +796,7 @@ workflow:
             value: warranty
             varType: string
             variable_selector:
-            - route_doc_scene_llm
+            - merge_doc_scene_classifier
             - text
           logical_operator: and
         - case_id: usage
@@ -683,7 +806,7 @@ workflow:
             value: usage
             varType: string
             variable_selector:
-            - route_doc_scene_llm
+            - merge_doc_scene_classifier
             - text
           logical_operator: and
         - case_id: other
@@ -693,7 +816,7 @@ workflow:
             value: other
             varType: string
             variable_selector:
-            - route_doc_scene_llm
+            - merge_doc_scene_classifier
             - text
           logical_operator: and
         desc: ''
@@ -1422,7 +1545,7 @@ workflow:
         - input_type: variable
           operation: over-write
           value:
-          - route_doc_scene_llm
+          - merge_doc_scene_classifier
           - text
           variable_selector:
           - conversation
