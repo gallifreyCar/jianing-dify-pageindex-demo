@@ -457,7 +457,7 @@ workflow:
           provider: langgenius/deepseek/deepseek
         prompt_config:
           jinja2_variables: []
-        code: "import re\n\ndef main(query: str, order_no: str = '') -> dict:\n    text = (query or '').strip()\n    normalized = re.sub(r'\\s+', '', text)\n    if not normalized:\n        return {'text': 'other'}\n\n    order_patterns = [r'\\bJN\\d{12}\\b', r'\\b[A-Z]{2}\\d{8,}\\b']\n    if any(re.search(pattern, text, re.I) for pattern in order_patterns):\n        return {'text': 'order'}\n\n    order_keywords = ['查订单', '查询订单', '订单号', '订单状态', '退款进度', '催发货', '查一下订单', '帮我查订单', '物流单号', '订单到哪', '什么时候发货']\n    docs_keywords = ['售后', '退货', '退款', '签收', '破损', '少件', '漏发', '质量', '坏了', '故障', '异响', '不能用', '失灵', '质保', '保修', '换新', '维修', '安装', '使用说明', '说明书', '怎么用', '怎么安装']\n\n    if any(keyword in text for keyword in order_keywords):\n        return {'text': 'order'}\n    if any(keyword in text for keyword in docs_keywords):\n        return {'text': 'docs'}\n    if '物流' in text or '快递' in text:\n        if any(keyword in text for keyword in ['破损', '少件', '漏发', '签收异常', '不更新']):\n            return {'text': 'docs'}\n        return {'text': 'order'}\n\n    # For short or ambiguous inputs, prefer clarification instead of risky routing.\n    if len(normalized) <= 4:\n        return {'text': 'other'}\n\n    if re.fullmatch(r'[A-Za-z0-9\\-_/]+', normalized):\n        return {'text': 'other'}\n\n    return {'text': 'other'}\n"
+        code: "import re\n\ndef main(query: str, order_no: str = '') -> dict:\n    text = (query or '').strip()\n    normalized = re.sub(r'\\s+', '', text)\n    remembered_order = (order_no or '').strip()\n    if not normalized:\n        return {'text': 'other'}\n\n    order_patterns = [r'\\bJN\\d{12}\\b', r'\\b[A-Z]{2}\\d{8,}\\b']\n    if any(re.search(pattern, text, re.I) for pattern in order_patterns):\n        return {'text': 'order'}\n\n    order_keywords = ['查订单', '查询订单', '订单号', '订单状态', '退款进度', '催发货', '查一下订单', '帮我查订单', '查一下我订单', '我订单', '物流单号', '订单到哪', '什么时候发货']\n    docs_keywords = ['售后', '退货', '退款', '签收', '破损', '少件', '漏发', '质量', '坏了', '故障', '异响', '不能用', '失灵', '质保', '保修', '换新', '维修', '安装', '使用说明', '说明书', '怎么用', '怎么安装']\n\n    order_followup_keywords = ['什么时候到', '多久到', '到哪了', '到了吗', '快递什么时候到', '物流什么时候到', '查一下我订单', '我订单', '这个订单', '这单', '这个快递', '这个物流', '为什么还要给你订单', '不是已经查到我订单']\n    refund_followup_keywords = ['能退款', '能退吗', '可以退款', '可以退吗', '退款吧', '退货吧', '这个订单能退款']\n\n    if any(keyword in text for keyword in order_keywords):\n        return {'text': 'order'}\n\n    if remembered_order:\n        if any(keyword in text for keyword in refund_followup_keywords):\n            return {'text': 'docs'}\n        if any(keyword in text for keyword in order_followup_keywords):\n            return {'text': 'order'}\n        if ('物流' in text or '快递' in text or '发货' in text) and not any(keyword in text for keyword in ['破损', '少件', '漏发', '签收异常', '不更新']):\n            return {'text': 'order'}\n        if normalized in ['什么时候到啊', '什么时候到', '到啊', '到没', '到了吗', '查一下我订单', '查一下我订单吧']:\n            return {'text': 'order'}\n\n    if any(keyword in text for keyword in docs_keywords):\n        return {'text': 'docs'}\n    if '物流' in text or '快递' in text:\n        if any(keyword in text for keyword in ['破损', '少件', '漏发', '签收异常', '不更新']):\n            return {'text': 'docs'}\n        return {'text': 'order'}\n\n    if len(normalized) <= 4:\n        return {'text': 'other'}\n\n    if re.fullmatch(r'[A-Za-z0-9\\-_/]+', normalized):\n        return {'text': 'other'}\n\n    return {'text': 'other'}\n"
         code_language: python3
         desc: ''
         outputs:
@@ -473,6 +473,11 @@ workflow:
           - query
           value_type: string
           variable: query
+        - value_selector:
+          - start
+          - order_no
+          value_type: string
+          variable: order_no
       height: 100
       id: route_l1_llm
       position:
@@ -1085,7 +1090,7 @@ workflow:
       type: custom
       width: 244
     - data:
-        code: "import json\n\ndef main(response_json: str) -> dict:\n    try:\n        response_body = json.loads(response_json or '{}')\n    except Exception:\n        return {\n            'formatted_answer': response_json or '订单接口返回异常，请稍后重试。'\n        }\n\n    order_no = response_body.get('order_no') or '未知订单号'\n    status = response_body.get('status') or '未知'\n    items = response_body.get('items') or []\n    if isinstance(items, list):\n        items_text = '、'.join(str(item) for item in items) if items else '暂无商品信息'\n    else:\n        items_text = str(items)\n    carrier = response_body.get('carrier') or '暂无'\n    tracking_no = response_body.get('tracking_no') or '暂无'\n    refund_status = response_body.get('refund_status') or '暂无'\n    latest_progress = response_body.get('latest_progress') or '暂无'\n\n    formatted_answer = (\n        f'我帮你查到订单 {order_no} 了。\\n\\n'\n        f'当前状态：{status}\\n'\n        f'商品：{items_text}\\n'\n        f'物流公司：{carrier}\\n'\n        f'物流单号：{tracking_no}\\n'\n        f'退款状态：{refund_status}\\n'\n        f'最新进度：{latest_progress}\\n\\n'\n        '如果你还想继续处理退款、催发货或售后问题，也可以直接继续说。'\n    )\n\n    return {\n        'formatted_answer': formatted_answer\n    }\n"
+        code: "import json\n\ndef main(response_json: str, query: str = '') -> dict:\n    try:\n        response_body = json.loads(response_json or '{}')\n    except Exception:\n        return {\n            'formatted_answer': response_json or '订单接口返回异常，请稍后重试。'\n        }\n\n    query = (query or '').strip()\n    order_no = response_body.get('order_no') or '未知订单号'\n    status = response_body.get('status') or '未知'\n    items = response_body.get('items') or []\n    if isinstance(items, list):\n        items_text = '、'.join(str(item) for item in items) if items else '暂无商品信息'\n    else:\n        items_text = str(items)\n    carrier = response_body.get('carrier') or '暂无'\n    tracking_no = response_body.get('tracking_no') or '暂无'\n    refund_status = response_body.get('refund_status') or '暂无'\n    latest_progress = response_body.get('latest_progress') or '暂无'\n\n    if '为什么' in query and '订单' in query and ('还要' in query or '已经查到' in query):\n        formatted_answer = (\n            f'我这边其实已经记住订单 {order_no} 了，后面你可以直接继续问物流、退款或售后，不用每次都重新发。\\n\\n'\n            f'当前状态：{status}\\n'\n            f'最新进度：{latest_progress}'\n        )\n        return {'formatted_answer': formatted_answer}\n\n    if '什么时候到' in query or '多久到' in query or '到哪了' in query or '到了吗' in query:\n        formatted_answer = (\n            f'我继续帮你看这个订单 {order_no}。\\n\\n'\n            f'当前状态：{status}\\n'\n            f'物流公司：{carrier}\\n'\n            f'物流单号：{tracking_no}\\n'\n            f'最新进度：{latest_progress}'\n        )\n        return {'formatted_answer': formatted_answer}\n\n    formatted_answer = (\n        f'我帮你查到订单 {order_no} 了。\\n\\n'\n        f'当前状态：{status}\\n'\n        f'商品：{items_text}\\n'\n        f'物流公司：{carrier}\\n'\n        f'物流单号：{tracking_no}\\n'\n        f'退款状态：{refund_status}\\n'\n        f'最新进度：{latest_progress}\\n\\n'\n        '如果你还想继续处理退款、催发货或售后问题，也可以直接继续说。'\n    )\n\n    return {\n        'formatted_answer': formatted_answer\n    }\n"
         code_language: python3
         title: 解析JSON-订单
         type: code
@@ -1099,6 +1104,11 @@ workflow:
           - body
           value_type: string
           variable: response_json
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: query
       height: 90
       id: parse_order_api
       position:
@@ -1243,7 +1253,7 @@ workflow:
       type: custom
       width: 244
     - data:
-        code: "def main(hint: str = '', query: str = '') -> dict:\n    hint = (hint or '').strip()\n    query = (query or '').strip()\n\n    if hint == '空输入':\n        text = '你好，发我具体问题就行，我来帮你判断。'\n    elif hint == '无明确售后意图的短输入':\n        text = '你好，你可以直接说下遇到的问题，我来帮你分一下。'\n    elif '订单' in query:\n        text = '可以的，你把订单号发我，我先帮你查一下。'\n    elif any(keyword in query for keyword in ['退款', '退货']):\n        text = '可以，我先帮你看退货退款这类问题。'\n    elif any(keyword in query for keyword in ['物流', '快递', '签收']):\n        text = '可以，我先帮你看物流或签收这类问题。'\n    elif any(keyword in query for keyword in ['质量', '故障', '维修', '质保']):\n        text = '可以，我先帮你看质保和维修这类问题。'\n    elif any(keyword in query for keyword in ['安装', '使用', '说明书']):\n        text = '可以，我先帮你看安装和使用这类问题。'\n    else:\n        text = '你好，你可以把问题说得具体一点，我来帮你判断。'\n\n    return {'text': text}\n"
+        code: "def main(hint: str = '', query: str = '', order_no: str = '') -> dict:\n    hint = (hint or '').strip()\n    query = (query or '').strip()\n    order_no = (order_no or '').strip()\n\n    if order_no:\n        if '订单' in query or '快递' in query or '物流' in query or '退款' in query or '退货' in query:\n            text = f'我这边还记着订单 {order_no}，你可以直接继续问。'\n        elif hint == '无明确售后意图的短输入':\n            text = f'我这边还记着订单 {order_no}，你可以直接问物流、退款或售后。'\n        else:\n            text = '你可以把问题说得具体一点，我继续结合这个订单帮你看。'\n        return {'text': text}\n\n    if hint == '空输入':\n        text = '你好，发我具体问题就行，我来帮你判断。'\n    elif hint == '无明确售后意图的短输入':\n        text = '你好，你可以直接说下遇到的问题，我来帮你分一下。'\n    elif '订单' in query:\n        text = '可以的，你把订单号发我，我先帮你查一下。'\n    elif any(keyword in query for keyword in ['退款', '退货']):\n        text = '可以，我先帮你看退货退款这类问题。'\n    elif any(keyword in query for keyword in ['物流', '快递', '签收']):\n        text = '可以，我先帮你看物流或签收这类问题。'\n    elif any(keyword in query for keyword in ['质量', '故障', '维修', '质保']):\n        text = '可以，我先帮你看质保和维修这类问题。'\n    elif any(keyword in query for keyword in ['安装', '使用', '说明书']):\n        text = '可以，我先帮你看安装和使用这类问题。'\n    else:\n        text = '你好，你可以把问题说得具体一点，我来帮你判断。'\n\n    return {'text': text}\n"
         code_language: python3
         desc: ''
         outputs:
@@ -1264,6 +1274,11 @@ workflow:
           - query
           value_type: string
           variable: query
+        - value_selector:
+          - start
+          - order_no
+          value_type: string
+          variable: order_no
       height: 100
       id: fallback_agent
       position:
