@@ -58,10 +58,22 @@ workflow:
         isInIteration: false
         isInLoop: false
         sourceType: if-else
-        targetType: http-request
+        targetType: code
       id: l1-order
       source: route_l1_if
       sourceHandle: order
+      target: extract_order_params
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: http-request
+      id: order-extract-query
+      source: extract_order_params
+      sourceHandle: source
       target: query_order_api
       targetHandle: target
       type: custom
@@ -82,10 +94,34 @@ workflow:
         isInIteration: false
         isInLoop: false
         sourceType: if-else
-        targetType: answer
+        targetType: code
       id: l1-fallback
       source: route_l1_if
-      sourceHandle: false
+      sourceHandle: 'false'
+      target: fallback_prep
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: llm
+      id: fallback-prep-agent
+      source: fallback_prep
+      sourceHandle: source
+      target: fallback_agent
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: llm
+        targetType: answer
+      id: fallback-agent-answer
+      source: fallback_agent
+      sourceHandle: source
       target: answer_fallback
       targetHandle: target
       type: custom
@@ -368,17 +404,11 @@ workflow:
       zIndex: 0
     nodes:
     - data:
-        desc: 输入用户问题和订单信息
+        desc: 输入查单辅助信息
         selected: false
         title: 开始
         type: start
         variables:
-        - label: 用户问题
-          max_length: 3000
-          options: []
-          required: true
-          type: paragraph
-          variable: user_query
         - label: 订单号
           max_length: 64
           options: []
@@ -854,6 +884,49 @@ workflow:
       type: custom
       width: 244
     - data:
+        code: "import re\n\ndef main(query: str = '', start_order_no: str = '', start_phone_tail: str = '') -> dict:\n    text = (query or '').strip()\n    order_no = (start_order_no or '').strip()\n    phone_tail = (start_phone_tail or '').strip()\n\n    if not order_no:\n        patterns = [r'\\bJN\\d{12}\\b', r'\\b[A-Z]{2}\\d{8,}\\b']\n        for pattern in patterns:\n            match = re.search(pattern, text, re.I)\n            if match:\n                order_no = match.group(0).upper()\n                break\n\n    if not phone_tail:\n        phone_patterns = [\n            r'(?:尾号|手机尾号|手机号后?4位|后四位)[^\\d]*(\\d{4})',\n            r'\\b(\\d{4})\\b',\n        ]\n        for pattern in phone_patterns:\n            match = re.search(pattern, text)\n            if match:\n                phone_tail = match.group(1)\n                break\n\n    return {\n        'order_no': order_no,\n        'phone_tail': phone_tail,\n    }\n"
+        code_language: python3
+        desc: ''
+        outputs:
+          order_no:
+            children: null
+            type: string
+          phone_tail:
+            children: null
+            type: string
+        selected: false
+        title: 提取查单参数
+        type: code
+        variables:
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: query
+        - value_selector:
+          - start
+          - order_no
+          value_type: string
+          variable: start_order_no
+        - value_selector:
+          - start
+          - phone_tail
+          value_type: string
+          variable: start_phone_tail
+      height: 110
+      id: extract_order_params
+      position:
+        x: 960
+        y: 760
+      positionAbsolute:
+        x: 960
+        y: 760
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
         authorization:
           config: null
           type: no-auth
@@ -862,7 +935,7 @@ workflow:
           data:
           - key: ''
             type: text
-            value: '{"order_no":"{{#start.order_no#}}","phone_tail":"{{#start.phone_tail#}}","user_query":"{{#sys.query#}}"}'
+            value: '{"order_no":"{{#extract_order_params.order_no#}}","phone_tail":"{{#extract_order_params.phone_tail#}}","user_query":"{{#sys.query#}}"}'
         desc: ''
         headers: 'Content-Type:application/json'
         method: post
@@ -1140,6 +1213,78 @@ workflow:
       type: custom
       width: 244
     - data:
+        code: "import re\n\ndef main(query: str = '') -> dict:\n    text = (query or '').strip()\n    normalized = re.sub(r'\\s+', '', text)\n    if not normalized:\n        return {'hint': '空输入'}\n\n    order_patterns = [r'\\bJN\\d{12}\\b', r'\\b[A-Z]{2}\\d{8,}\\b']\n    service_keywords = ['订单', '退款', '退货', '物流', '快递', '签收', '质保', '保修', '维修', '安装', '使用', '说明书', '质量', '故障']\n\n    if any(re.search(pattern, text, re.I) for pattern in order_patterns):\n        return {'hint': text}\n\n    if any(keyword in text for keyword in service_keywords):\n        return {'hint': text}\n\n    if len(normalized) <= 4 or re.fullmatch(r'[A-Za-z0-9\\W_]+', normalized):\n        return {'hint': '无明确售后意图的短输入'}\n\n    return {'hint': '信息不足的模糊输入'}\n"
+        code_language: python3
+        desc: ''
+        outputs:
+          hint:
+            children: null
+            type: string
+        selected: false
+        title: 兜底输入整理
+        type: code
+        variables:
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: query
+      height: 100
+      id: fallback_prep
+      position:
+        x: 960
+        y: 1040
+      positionAbsolute:
+        x: 960
+        y: 1040
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: ''
+        memory:
+          query_prompt_template: '{{#sys.query#}}
+
+            {{#sys.files#}}'
+          window:
+            enabled: false
+            size: 10
+        model:
+          completion_params:
+            temperature: 0.2
+          mode: chat
+          name: deepseek-chat
+          provider: langgenius/deepseek/deepseek
+        prompt_template:
+        - role: system
+          text: "你是嘉宁测试电商的售后分流助手。\n任务：当用户输入过于模糊、无意义、信息不足时，用中文回复 1 到 2 句。\n要求：\n1. 语气自然，像真人客服。\n2. 先轻微承接用户，再提示需要补充更具体的信息。\n3. 如果输入明显无关、无意义或太短，不要复述用户原词。\n4. 不要直接复述完整能力列表。\n5. 不要超过 38 个中文字符。\n6. 不要使用编号、项目符号、表情。"
+        - role: user
+          text: '规范化输入：{{#fallback_prep.hint#}}'
+        selected: false
+        title: 兜底Agent
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 100
+      id: fallback_agent
+      position:
+        x: 1290
+        y: 1040
+      positionAbsolute:
+        x: 1290
+        y: 1040
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
         answer: "{{#parse_order_api.formatted_answer#}}"
         desc: ''
         selected: false
@@ -1160,7 +1305,7 @@ workflow:
       type: custom
       width: 244
     - data:
-        answer: "我先帮你确认一下你想处理哪一类问题，这样我才能给到更准确的结果。\n\n你可以直接回复下面任意一种：\n1) 查订单：例如“帮我查订单 JN202603150001”\n2) 退货退款：例如“退货规则是什么”\n3) 物流签收：例如“物流破损怎么处理”\n4) 质保维修：例如“质量不行怎么办”\n5) 安装使用：例如“怎么安装”\n\n如果你愿意，也可以直接把完整问题发我，我继续帮你判断。"
+        answer: "{{#fallback_agent.text#}}\n\n我目前可以帮你处理这些：\n查订单：例如“帮我查订单 JN202603150001”\n退货退款：例如“退货规则是什么”\n物流签收：例如“物流破损怎么处理”\n质保维修：例如“质量不行怎么办”\n安装使用：例如“怎么安装”\n\n如果你愿意，也可以直接把完整问题发我，我继续帮你判断。"
         desc: ''
         selected: false
         title: 回复-兜底
@@ -1169,10 +1314,10 @@ workflow:
       height: 120
       id: answer_fallback
       position:
-        x: 960
+        x: 1620
         y: 1040
       positionAbsolute:
-        x: 960
+        x: 1620
         y: 1040
       selected: false
       sourcePosition: right
