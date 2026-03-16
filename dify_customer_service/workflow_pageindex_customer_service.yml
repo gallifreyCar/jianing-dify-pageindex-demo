@@ -106,7 +106,7 @@ workflow:
         isInIteration: false
         isInLoop: false
         sourceType: code
-        targetType: llm
+        targetType: code
       id: fallback-prep-agent
       source: fallback_prep
       sourceHandle: source
@@ -1243,34 +1243,27 @@ workflow:
       type: custom
       width: 244
     - data:
-        context:
-          enabled: false
-          variable_selector: []
+        code: "def main(hint: str = '', query: str = '') -> dict:\n    hint = (hint or '').strip()\n    query = (query or '').strip()\n\n    if hint == '空输入':\n        text = '你好，发我具体问题就行，我来帮你判断。'\n    elif hint == '无明确售后意图的短输入':\n        text = '你好，你可以直接说下遇到的问题，我来帮你分一下。'\n    elif '订单' in query:\n        text = '可以的，你把订单号发我，我先帮你查一下。'\n    elif any(keyword in query for keyword in ['退款', '退货']):\n        text = '可以，我先帮你看退货退款这类问题。'\n    elif any(keyword in query for keyword in ['物流', '快递', '签收']):\n        text = '可以，我先帮你看物流或签收这类问题。'\n    elif any(keyword in query for keyword in ['质量', '故障', '维修', '质保']):\n        text = '可以，我先帮你看质保和维修这类问题。'\n    elif any(keyword in query for keyword in ['安装', '使用', '说明书']):\n        text = '可以，我先帮你看安装和使用这类问题。'\n    else:\n        text = '你好，你可以把问题说得具体一点，我来帮你判断。'\n\n    return {'text': text}\n"
+        code_language: python3
         desc: ''
-        memory:
-          query_prompt_template: '{{#sys.query#}}
-
-            {{#sys.files#}}'
-          window:
-            enabled: false
-            size: 10
-        model:
-          completion_params:
-            temperature: 0.2
-          mode: chat
-          name: deepseek-chat
-          provider: langgenius/deepseek/deepseek
-        prompt_template:
-        - role: system
-          text: "你是嘉宁测试电商的售后分流助手。\n任务：当用户输入过于模糊、无意义、信息不足时，用中文回复 1 到 2 句。\n要求：\n1. 语气自然，像真人客服。\n2. 先轻微承接用户，再提示需要补充更具体的信息。\n3. 如果输入明显无关、无意义或太短，不要复述用户原词。\n4. 不要直接复述完整能力列表。\n5. 不要超过 38 个中文字符。\n6. 不要使用编号、项目符号、表情。"
-        - role: user
-          text: '规范化输入：{{#fallback_prep.hint#}}'
+        outputs:
+          text:
+            children: null
+            type: string
         selected: false
         title: 兜底Agent
-        type: llm
-        variables: []
-        vision:
-          enabled: false
+        type: code
+        variables:
+        - value_selector:
+          - fallback_prep
+          - hint
+          value_type: string
+          variable: hint
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: query
       height: 100
       id: fallback_agent
       position:
