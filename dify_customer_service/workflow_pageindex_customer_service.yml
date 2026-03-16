@@ -26,6 +26,14 @@ workflow:
     - last_doc_scene
     value: other
     value_type: string
+  - description: 最近一次识别到的订单号
+    id: 8b9e08f3-bd50-462e-b47f-5f2a3e32b003
+    name: last_order_no
+    selector:
+    - conversation
+    - last_order_no
+    value: ''
+    value_type: string
   environment_variables: []
   features:
     file_upload:
@@ -458,9 +466,21 @@ workflow:
         isInIteration: false
         isInLoop: false
         sourceType: tool
+        targetType: assigner
+      id: order-remember
+      source: parse_order_api
+      sourceHandle: source
+      target: assign_last_order_no
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: assigner
         targetType: answer
       id: order-answer
-      source: parse_order_api
+      source: assign_last_order_no
       sourceHandle: source
       target: answer_order
       targetHandle: target
@@ -521,7 +541,7 @@ workflow:
           provider: langgenius/deepseek/deepseek
         prompt_config:
           jinja2_variables: []
-        code: "import re\n\nLOGISTICS_EXCEPTION_KEYWORDS = ['破损', '少件', '漏发', '签收异常', '不更新']\nORDER_DIRECT_KEYWORDS = ['查订单', '查询订单', '订单号', '订单状态', '退款进度', '催发货', '查一下订单', '帮我查订单', '查一下我订单', '我订单', '物流单号', '订单到哪', '什么时候发货', '什么时候到', '多久到', '到哪了', '到了吗', '快递什么时候到', '物流什么时候到']\nORDER_CONTEXT_KEYWORDS = ['这个订单', '这单', '这一单', '这个快递', '这个物流', '不是已经查到我订单', '为什么还要给你订单', '为什么还要提供', '你不是有订单', '已经查到我订单', '我订单号']\nORDER_PRODUCT_KEYWORDS = ['型号', '商品', '商品名', '这个商品', '这个订单商品', '这款', '这个杯子']\nREFUND_KEYWORDS = ['退货', '退款', '七天无理由', '不想要', '退差价', '退款多久', '退钱', '订单退款', '能退款', '能退吗', '可以退款', '可以退吗', '退款吧', '退货吧', '售后规则', '售后规则呢']\nUSAGE_KEYWORDS = ['安装', '使用', '说明书', '怎么用', '怎么安装', '安装说明', '如何连接', '如何开机', '如何设置', '教程', '步骤', '怎么装', '安装步骤', '装不上', '不会装', '连不上']\nWARRANTY_KEYWORDS = ['质量', '坏了', '损坏', '故障', '异响', '不能用', '失灵', '保修', '质保', '换新', '维修', '能换新吗', '能修吗', '返修', '修理']\nDOCS_GENERIC_KEYWORDS = ['售后', '签收', '规则']\nFOLLOWUP_PREFIXES = ['这个', '那这个', '那', '那怎么', '这怎么', '怎么办', '怎么处理', '然后呢', '那呢', '这个呢']\nDOCS_FOLLOWUP_KEYWORDS = ['能退吗', '可以退吗', '退款呢', '退货呢', '怎么装', '说明书呢', '安装步骤呢', '能换新吗', '能修吗', '怎么修', '质保多久', '保修多久', '规则呢', '售后规则呢']\n\n\ndef contains_any(text: str, keywords: list[str]) -> bool:\n    return any(keyword in text for keyword in keywords)\n\n\ndef main(query: str, order_no: str = '', last_intent: str = 'other', last_doc_scene: str = 'other') -> dict:\n    text = (query or '').strip()\n    normalized = re.sub(r'\\s+', '', text)\n    remembered_order = (order_no or '').strip()\n    last_intent = (last_intent or 'other').strip()\n    last_doc_scene = (last_doc_scene or 'other').strip()\n    if not normalized:\n        return {'text': 'other'}\n\n    order_patterns = [r'\\bJN\\d{12}\\b', r'\\b[A-Z]{2}\\d{8,}\\b']\n    if any(re.search(pattern, text, re.I) for pattern in order_patterns):\n        return {'text': 'order'}\n\n    if last_intent == 'docs' and last_doc_scene != 'other':\n        if contains_any(text, DOCS_FOLLOWUP_KEYWORDS):\n            return {'text': 'docs'}\n        if contains_any(text, FOLLOWUP_PREFIXES) and len(normalized) <= 12:\n            return {'text': 'docs'}\n        if normalized.endswith('呢') and len(normalized) <= 8:\n            return {'text': 'docs'}\n\n    if contains_any(text, FOLLOWUP_PREFIXES):\n        if last_intent == 'docs' and (contains_any(text, REFUND_KEYWORDS + USAGE_KEYWORDS + WARRANTY_KEYWORDS) or len(normalized) <= 10):\n            return {'text': 'docs'}\n        if last_intent == 'order' and (remembered_order or contains_any(text, ORDER_DIRECT_KEYWORDS + ORDER_CONTEXT_KEYWORDS + ORDER_PRODUCT_KEYWORDS)):\n            return {'text': 'order'}\n\n    order_score = 0\n    docs_score = 0\n\n    if contains_any(text, ORDER_DIRECT_KEYWORDS):\n        order_score += 3\n    if contains_any(text, REFUND_KEYWORDS + USAGE_KEYWORDS + WARRANTY_KEYWORDS + DOCS_GENERIC_KEYWORDS):\n        docs_score += 3\n\n    if ('物流' in text or '快递' in text or '发货' in text):\n        if contains_any(text, LOGISTICS_EXCEPTION_KEYWORDS):\n            docs_score += 3\n        else:\n            order_score += 2\n\n    if remembered_order:\n        if contains_any(text, ORDER_CONTEXT_KEYWORDS):\n            order_score += 3\n        if contains_any(text, ORDER_PRODUCT_KEYWORDS):\n            order_score += 1\n        if contains_any(text, REFUND_KEYWORDS):\n            docs_score += 2\n        if contains_any(text, USAGE_KEYWORDS + WARRANTY_KEYWORDS):\n            docs_score += 2\n        if normalized in ['什么时候到啊', '什么时候到', '到啊', '到没', '到了吗', '查一下我订单', '查一下我订单吧']:\n            order_score += 3\n        if len(normalized) <= 8 and contains_any(text, ['退款', '退货', '物流', '快递', '发货', '型号', '商品', '说明书']):\n            order_score += 1\n\n    if last_intent == 'docs' and last_doc_scene != 'other' and len(normalized) <= 10 and contains_any(text, ['能退吗', '能退', '怎么装', '怎么修', '怎么用', '怎么办', '怎么处理', '怎么安装', '能换新吗', '能修吗', '规则呢']):\n        docs_score += 2\n\n    if docs_score >= order_score + 1 and docs_score > 0:\n        return {'text': 'docs'}\n    if order_score > 0:\n        return {'text': 'order'}\n\n    if len(normalized) <= 4:\n        return {'text': last_intent if last_intent == 'docs' and last_doc_scene != 'other' else ('order' if last_intent == 'order' and remembered_order else 'other')}\n\n    if re.fullmatch(r'[A-Za-z0-9\\-_/]+', normalized):\n        return {'text': 'other'}\n\n    return {'text': 'other'}\n"
+        code: "import re\n\nLOGISTICS_EXCEPTION_KEYWORDS = ['破损', '少件', '漏发', '签收异常', '不更新']\nORDER_DIRECT_KEYWORDS = ['查订单', '查询订单', '订单号', '订单状态', '退款进度', '催发货', '查一下订单', '帮我查订单', '查一下我订单', '我订单', '物流单号', '订单到哪', '什么时候发货', '什么时候到', '多久到', '到哪了', '到了吗', '快递什么时候到', '物流什么时候到']\nORDER_CONTEXT_KEYWORDS = ['这个订单', '这单', '这一单', '这个快递', '这个物流', '不是已经查到我订单', '为什么还要给你订单', '为什么还要提供', '你不是有订单', '已经查到我订单', '我订单号']\nORDER_PRODUCT_KEYWORDS = ['型号', '商品', '商品名', '这个商品', '这个订单商品', '这款', '这个杯子']\nREFUND_KEYWORDS = ['退货', '退款', '七天无理由', '不想要', '退差价', '退款多久', '退钱', '订单退款', '能退款', '能退吗', '可以退款', '可以退吗', '退款吧', '退货吧', '售后规则', '售后规则呢']\nUSAGE_KEYWORDS = ['安装', '使用', '说明书', '怎么用', '怎么安装', '安装说明', '如何连接', '如何开机', '如何设置', '教程', '步骤', '怎么装', '安装步骤', '装不上', '不会装', '连不上']\nWARRANTY_KEYWORDS = ['质量', '坏了', '损坏', '故障', '异响', '不能用', '失灵', '保修', '质保', '换新', '维修', '能换新吗', '能修吗', '返修', '修理']\nDOCS_GENERIC_KEYWORDS = ['售后', '签收', '规则']\nFOLLOWUP_PREFIXES = ['这个', '那这个', '那', '那怎么', '这怎么', '怎么办', '怎么处理', '然后呢', '那呢', '这个呢']\nDOCS_FOLLOWUP_KEYWORDS = ['能退吗', '可以退吗', '退款呢', '退货呢', '怎么装', '说明书呢', '安装步骤呢', '能换新吗', '能修吗', '怎么修', '质保多久', '保修多久', '规则呢', '售后规则呢']\n\n\ndef contains_any(text: str, keywords: list[str]) -> bool:\n    return any(keyword in text for keyword in keywords)\n\n\ndef main(query: str, order_no: str = '', last_intent: str = 'other', last_doc_scene: str = 'other') -> dict:\n    text = (query or '').strip()\n    normalized = re.sub(r'\\s+', '', text)\n    remembered_order = (order_no or '').strip()\n    last_intent = (last_intent or 'other').strip()\n    last_doc_scene = (last_doc_scene or 'other').strip()\n    if not normalized:\n        return {'text': 'other'}\n\n    order_patterns = [r'\\bJN\\d{12}\\b', r'\\b[A-Z]{2}\\d{8,}\\b']\n    has_order_pattern = any(re.search(pattern, text, re.I) for pattern in order_patterns)\n    has_docs_intent = contains_any(text, REFUND_KEYWORDS + USAGE_KEYWORDS + WARRANTY_KEYWORDS + DOCS_GENERIC_KEYWORDS)\n\n    if has_order_pattern and has_docs_intent:\n        return {'text': 'docs'}\n    if has_order_pattern:\n        return {'text': 'order'}\n\n    if last_intent == 'docs' and last_doc_scene != 'other':\n        if contains_any(text, DOCS_FOLLOWUP_KEYWORDS):\n            return {'text': 'docs'}\n        if contains_any(text, FOLLOWUP_PREFIXES) and len(normalized) <= 12:\n            return {'text': 'docs'}\n        if normalized.endswith('呢') and len(normalized) <= 8:\n            return {'text': 'docs'}\n\n    if contains_any(text, FOLLOWUP_PREFIXES):\n        if last_intent == 'docs' and (contains_any(text, REFUND_KEYWORDS + USAGE_KEYWORDS + WARRANTY_KEYWORDS) or len(normalized) <= 10):\n            return {'text': 'docs'}\n        if last_intent == 'order' and (remembered_order or contains_any(text, ORDER_DIRECT_KEYWORDS + ORDER_CONTEXT_KEYWORDS + ORDER_PRODUCT_KEYWORDS)):\n            return {'text': 'order'}\n\n    order_score = 0\n    docs_score = 0\n\n    if contains_any(text, ORDER_DIRECT_KEYWORDS):\n        order_score += 3\n    if has_docs_intent:\n        docs_score += 3\n\n    if ('物流' in text or '快递' in text or '发货' in text):\n        if contains_any(text, LOGISTICS_EXCEPTION_KEYWORDS):\n            docs_score += 3\n        else:\n            order_score += 2\n\n    if remembered_order:\n        if contains_any(text, ORDER_CONTEXT_KEYWORDS):\n            order_score += 3\n        if contains_any(text, ORDER_PRODUCT_KEYWORDS):\n            order_score += 1\n        if contains_any(text, REFUND_KEYWORDS):\n            docs_score += 2\n        if contains_any(text, USAGE_KEYWORDS + WARRANTY_KEYWORDS):\n            docs_score += 2\n        if normalized in ['什么时候到啊', '什么时候到', '到啊', '到没', '到了吗', '查一下我订单', '查一下我订单吧']:\n            order_score += 3\n        if len(normalized) <= 8 and contains_any(text, ['退款', '退货', '物流', '快递', '发货', '型号', '商品', '说明书']):\n            order_score += 1\n\n    if last_intent == 'docs' and last_doc_scene != 'other' and len(normalized) <= 10 and contains_any(text, ['能退吗', '能退', '怎么装', '怎么修', '怎么用', '怎么办', '怎么处理', '怎么安装', '能换新吗', '能修吗', '规则呢']):\n        docs_score += 2\n\n    if docs_score >= order_score + 1 and docs_score > 0:\n        return {'text': 'docs'}\n    if order_score > 0:\n        return {'text': 'order'}\n\n    if len(normalized) <= 4:\n        return {'text': last_intent if last_intent == 'docs' and last_doc_scene != 'other' else ('order' if last_intent == 'order' and remembered_order else 'other')}\n\n    if re.fullmatch(r'[A-Za-z0-9\\-_/]+', normalized):\n        return {'text': 'other'}\n\n    return {'text': 'other'}\n"
         code_language: python3
         desc: ''
         outputs:
@@ -538,8 +558,8 @@ workflow:
           value_type: string
           variable: query
         - value_selector:
-          - start
-          - order_no
+          - conversation
+          - last_order_no
           value_type: string
           variable: order_no
         - value_selector:
@@ -1096,7 +1116,7 @@ workflow:
       type: custom
       width: 244
     - data:
-        code: "import re\n\ndef main(query: str = '', start_order_no: str = '', start_phone_tail: str = '') -> dict:\n    text = (query or '').strip()\n    order_no = (start_order_no or '').strip()\n    phone_tail = (start_phone_tail or '').strip()\n\n    if not order_no:\n        patterns = [r'\\bJN\\d{12}\\b', r'\\b[A-Z]{2}\\d{8,}\\b']\n        for pattern in patterns:\n            match = re.search(pattern, text, re.I)\n            if match:\n                order_no = match.group(0).upper()\n                break\n\n    if not phone_tail:\n        phone_patterns = [\n            r'(?:尾号|手机尾号|手机号后?4位|后四位)[^\\d]*(\\d{4})',\n            r'\\b(\\d{4})\\b',\n        ]\n        for pattern in phone_patterns:\n            match = re.search(pattern, text)\n            if match:\n                phone_tail = match.group(1)\n                break\n\n    return {\n        'order_no': order_no,\n        'phone_tail': phone_tail,\n    }\n"
+        code: "import re\n\ndef main(query: str = '', start_order_no: str = '', start_phone_tail: str = '', remembered_order_no: str = '') -> dict:\n    text = (query or '').strip()\n    order_no = (start_order_no or '').strip()\n    phone_tail = (start_phone_tail or '').strip()\n    remembered_order_no = (remembered_order_no or '').strip()\n\n    if not order_no:\n        patterns = [r'\\bJN\\d{12}\\b', r'\\b[A-Z]{2}\\d{8,}\\b']\n        for pattern in patterns:\n            match = re.search(pattern, text, re.I)\n            if match:\n                order_no = match.group(0).upper()\n                break\n\n    if not order_no and remembered_order_no:\n        if any(keyword in text for keyword in ['订单', '快递', '物流', '退款', '退货', '发货', '到哪', '到了吗', '什么时候到', '多久到']):\n            order_no = remembered_order_no\n\n    if not phone_tail:\n        phone_patterns = [\n            r'(?:尾号|手机尾号|手机号后?4位|后四位)[^\\d]*(\\d{4})',\n            r'\\b(\\d{4})\\b',\n        ]\n        for pattern in phone_patterns:\n            match = re.search(pattern, text)\n            if match:\n                phone_tail = match.group(1)\n                break\n\n    return {\n        'order_no': order_no,\n        'phone_tail': phone_tail,\n    }\n"
         code_language: python3
         desc: ''
         outputs:
@@ -1125,6 +1145,11 @@ workflow:
           - phone_tail
           value_type: string
           variable: start_phone_tail
+        - value_selector:
+          - conversation
+          - last_order_no
+          value_type: string
+          variable: remembered_order_no
       height: 110
       id: extract_order_params
       position:
@@ -1297,12 +1322,15 @@ workflow:
       type: custom
       width: 244
     - data:
-        code: "import json\n\ndef main(response_json: str, query: str = '') -> dict:\n    try:\n        response_body = json.loads(response_json or '{}')\n    except Exception:\n        return {\n            'formatted_answer': response_json or '订单接口返回异常，请稍后重试。'\n        }\n\n    query = (query or '').strip()\n    order_no = response_body.get('order_no') or '未知订单号'\n    status = response_body.get('status') or '未知'\n    items = response_body.get('items') or []\n    if isinstance(items, list):\n        items_text = '、'.join(str(item) for item in items) if items else '暂无商品信息'\n    else:\n        items_text = str(items)\n    carrier = response_body.get('carrier') or '暂无'\n    tracking_no = response_body.get('tracking_no') or '暂无'\n    refund_status = response_body.get('refund_status') or '暂无'\n    latest_progress = response_body.get('latest_progress') or '暂无'\n\n    if ('为什么' in query and '订单' in query and ('还要' in query or '已经查到' in query)) or ('你不是有订单' in query):\n        formatted_answer = (\n            f'我这边其实已经记住订单 {order_no} 了，后面你可以直接继续问物流、退款或售后，不用每次都重新发。\\n\\n'\n            f'当前商品：{items_text}\\n'\n            f'当前状态：{status}\\n'\n            f'最新进度：{latest_progress}'\n        )\n        return {'formatted_answer': formatted_answer}\n\n    if any(keyword in query for keyword in ['型号', '商品', '商品名', '这个商品', '这个订单商品', '这款', '这个杯子']):\n        formatted_answer = (\n            f'我这边能看到这单商品是：{items_text}。\\n\\n'\n            f'订单状态：{status}\\n'\n            f'如果你是想问安装说明、使用方法或质保，我也可以继续按这个商品帮你看。'\n        )\n        return {'formatted_answer': formatted_answer}\n\n    if '什么时候到' in query or '多久到' in query or '到哪了' in query or '到了吗' in query:\n        formatted_answer = (\n            f'我继续帮你看这个订单 {order_no}。\\n\\n'\n            f'当前状态：{status}\\n'\n            f'物流公司：{carrier}\\n'\n            f'物流单号：{tracking_no}\\n'\n            f'最新进度：{latest_progress}'\n        )\n        return {'formatted_answer': formatted_answer}\n\n    formatted_answer = (\n        f'我帮你查到订单 {order_no} 了。\\n\\n'\n        f'当前状态：{status}\\n'\n        f'商品：{items_text}\\n'\n        f'物流公司：{carrier}\\n'\n        f'物流单号：{tracking_no}\\n'\n        f'退款状态：{refund_status}\\n'\n        f'最新进度：{latest_progress}\\n\\n'\n        '如果你还想继续处理退款、催发货或售后问题，也可以直接继续说。'\n    )\n\n    return {\n        'formatted_answer': formatted_answer\n    }\n"
+        code: "import json\n\ndef main(response_json: str, query: str = '') -> dict:\n    try:\n        response_body = json.loads(response_json or '{}')\n    except Exception:\n        return {\n            'formatted_answer': response_json or '订单接口返回异常，请稍后重试。',\n            'order_no': ''\n        }\n\n    query = (query or '').strip()\n    order_no = response_body.get('order_no') or ''\n    display_order_no = order_no or '未知订单号'\n    status = response_body.get('status') or '未知'\n    items = response_body.get('items') or []\n    if isinstance(items, list):\n        items_text = '、'.join(str(item) for item in items) if items else '暂无商品信息'\n    else:\n        items_text = str(items)\n    carrier = response_body.get('carrier') or '暂无'\n    tracking_no = response_body.get('tracking_no') or '暂无'\n    refund_status = response_body.get('refund_status') or '暂无'\n    latest_progress = response_body.get('latest_progress') or '暂无'\n\n    if ('为什么' in query and '订单' in query and ('还要' in query or '已经查到' in query)) or ('你不是有订单' in query):\n        formatted_answer = (\n            f'我这边其实已经记住订单 {display_order_no} 了，后面你可以直接继续问物流、退款或售后，不用每次都重新发。\\n\\n'\n            f'当前商品：{items_text}\\n'\n            f'当前状态：{status}\\n'\n            f'最新进度：{latest_progress}'\n        )\n        return {'formatted_answer': formatted_answer, 'order_no': order_no}\n\n    if any(keyword in query for keyword in ['型号', '商品', '商品名', '这个商品', '这个订单商品', '这款', '这个杯子']):\n        formatted_answer = (\n            f'我这边能看到这单商品是：{items_text}。\\n\\n'\n            f'订单状态：{status}\\n'\n            f'如果你是想问安装说明、使用方法或质保，我也可以继续按这个商品帮你看。'\n        )\n        return {'formatted_answer': formatted_answer, 'order_no': order_no}\n\n    if '什么时候到' in query or '多久到' in query or '到哪了' in query or '到了吗' in query:\n        formatted_answer = (\n            f'我继续帮你看这个订单 {display_order_no}。\\n\\n'\n            f'当前状态：{status}\\n'\n            f'物流公司：{carrier}\\n'\n            f'物流单号：{tracking_no}\\n'\n            f'最新进度：{latest_progress}'\n        )\n        return {'formatted_answer': formatted_answer, 'order_no': order_no}\n\n    formatted_answer = (\n        f'我帮你查到订单 {display_order_no} 了。\\n\\n'\n        f'当前状态：{status}\\n'\n        f'商品：{items_text}\\n'\n        f'物流公司：{carrier}\\n'\n        f'物流单号：{tracking_no}\\n'\n        f'退款状态：{refund_status}\\n'\n        f'最新进度：{latest_progress}\\n\\n'\n        '如果你还想继续处理退款、催发货或售后问题，也可以直接继续说。'\n    )\n\n    return {\n        'formatted_answer': formatted_answer,\n        'order_no': order_no\n    }\n"
         code_language: python3
         title: 解析JSON-订单
         type: code
         outputs:
           formatted_answer:
+            children: null
+            type: string
+          order_no:
             children: null
             type: string
         variables:
@@ -1324,6 +1352,35 @@ workflow:
       positionAbsolute:
         x: 1270
         y: 860
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: ''
+        items:
+        - input_type: variable
+          operation: over-write
+          value:
+          - parse_order_api
+          - order_no
+          variable_selector:
+          - conversation
+          - last_order_no
+          write_mode: over-write
+        selected: false
+        title: 记住订单号
+        type: assigner
+        version: '2'
+      height: 84
+      id: assign_last_order_no
+      position:
+        x: 1590
+        y: 760
+      positionAbsolute:
+        x: 1590
+        y: 760
       selected: false
       sourcePosition: right
       targetPosition: left
