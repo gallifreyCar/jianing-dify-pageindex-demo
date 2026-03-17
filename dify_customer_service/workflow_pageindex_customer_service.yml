@@ -309,7 +309,7 @@ workflow:
           import re
 
           LOGISTICS_EXCEPTION_KEYWORDS = ['破损', '少件', '漏发', '签收异常', '不更新']
-          ORDER_DIRECT_KEYWORDS = ['查订单', '查询订单', '订单号', '订单状态', '退款进度', '催发货', '查一下订单', '帮我查订单', '查一下我订单', '我订单', '物流单号', '订单到哪', '什么时候发货', '什么时候到', '多久到', '到哪了', '到了吗', '快递什么时候到', '物流什么时候到']
+          ORDER_DIRECT_KEYWORDS = ['查订单', '查询订单', '订单号', '订单状态', '退款进度', '催发货', '查一下订单', '帮我查订单', '查一下我订单', '我订单', '物流单号', '订单到哪', '什么时候发货', '什么时候到', '多久到', '到哪了', '到了吗', '快递什么时候到', '物流什么时候到', '我的货在哪里', '我的货到哪了', '我的货到了没有', '我的货到了没', '我的货物在哪里', '我的货物到哪了', '我的货物到了没有', '我的货物到了没', '货到了没有', '货到了没', '货物到了没有', '货物到了没', '到货了吗']
           ORDER_CONTEXT_KEYWORDS = ['这个订单', '这单', '这一单', '这个快递', '这个物流', '不是已经查到我订单', '你不是已经查到我订单了吗', '为什么还要给你订单', '为什么还要提供', '你不是有订单', '已经查到我订单', '我订单号']
           ORDER_PRODUCT_KEYWORDS = ['型号', '商品', '商品名', '这个商品', '这个订单商品', '这款', '这个杯子']
           REFUND_KEYWORDS = ['退货', '退款', '七天无理由', '不想要', '退差价', '退款多久', '退钱', '订单退款', '能退款', '能退吗', '可以退款', '可以退吗', '退款吧', '退货吧', '售后规则', '售后规则呢']
@@ -319,16 +319,17 @@ workflow:
           FOLLOWUP_PREFIXES = ['这个', '那这个', '那', '那怎么', '这怎么', '怎么办', '怎么处理', '然后呢', '那呢', '这个呢']
           DOCS_FOLLOWUP_KEYWORDS = ['能退吗', '可以退吗', '退款呢', '退货呢', '怎么装', '说明书呢', '安装步骤呢', '能换新吗', '能修吗', '怎么修', '质保多久', '保修多久', '规则呢', '售后规则呢']
           ORDER_PROGRESS_KEYWORDS = ['退款到哪一步了', '退款到哪一步', '退款进度', '审核到哪了', '到账了吗', '退款审核通过了吗']
+          ORDER_LOGISTICS_FOLLOWUPS = ['什么时候到啊', '什么时候到', '到啊', '到没', '到了吗', '查一下我订单', '查一下我订单吧', '我的货在哪里', '我的货到哪了', '我的货到了没有', '我的货到了没', '我的货物在哪里', '我的货物到哪了', '我的货物到了没有', '我的货物到了没', '货到了没有', '货到了没', '货物到了没有', '货物到了没', '到货了吗', '快递到哪了', '物流到哪了']
 
 
           def contains_any(text: str, keywords: list[str]) -> bool:
               return any(keyword in text for keyword in keywords)
 
 
-          def main(query: str, order_no: str = '', last_intent: str = 'other', last_doc_scene: str = 'other') -> dict:
+          def main(query: str, order_no: str = '', start_order_no: str = '', last_intent: str = 'other', last_doc_scene: str = 'other') -> dict:
               text = (query or '').strip()
               normalized = re.sub(r'\s+', '', text)
-              remembered_order = (order_no or '').strip()
+              remembered_order = (order_no or start_order_no or '').strip()
               last_intent = (last_intent or 'other').strip()
               last_doc_scene = (last_doc_scene or 'other').strip()
               if not normalized:
@@ -351,14 +352,14 @@ workflow:
                   if normalized.endswith('呢') and len(normalized) <= 8:
                       return {'text': 'docs'}
 
-              if remembered_order and contains_any(text, ORDER_PROGRESS_KEYWORDS):
+              if remembered_order and contains_any(text, ORDER_PROGRESS_KEYWORDS + ORDER_LOGISTICS_FOLLOWUPS):
                   return {'text': 'order'}
 
               if contains_any(text, FOLLOWUP_PREFIXES):
                   if last_intent == 'docs' and (contains_any(text, REFUND_KEYWORDS + USAGE_KEYWORDS + WARRANTY_KEYWORDS) or len(normalized) <= 10):
                       return {'text': 'docs'}
-                  if last_intent == 'order' and (remembered_order or contains_any(text, ORDER_DIRECT_KEYWORDS + ORDER_CONTEXT_KEYWORDS + ORDER_PRODUCT_KEYWORDS)):
-                      return {'text': 'order'}
+                      if last_intent == 'order' and (remembered_order or contains_any(text, ORDER_DIRECT_KEYWORDS + ORDER_CONTEXT_KEYWORDS + ORDER_PRODUCT_KEYWORDS + ORDER_LOGISTICS_FOLLOWUPS)):
+                          return {'text': 'order'}
 
               order_score = 0
               docs_score = 0
@@ -379,15 +380,17 @@ workflow:
                       order_score += 3
                   if contains_any(text, ORDER_PROGRESS_KEYWORDS):
                       order_score += 3
+                  if contains_any(text, ORDER_LOGISTICS_FOLLOWUPS):
+                      order_score += 3
                   if contains_any(text, ORDER_PRODUCT_KEYWORDS):
                       order_score += 1
                   if contains_any(text, REFUND_KEYWORDS):
                       docs_score += 2
                   if contains_any(text, USAGE_KEYWORDS + WARRANTY_KEYWORDS):
                       docs_score += 2
-                  if normalized in ['什么时候到啊', '什么时候到', '到啊', '到没', '到了吗', '查一下我订单', '查一下我订单吧']:
+                  if normalized in ORDER_LOGISTICS_FOLLOWUPS:
                       order_score += 3
-                  if len(normalized) <= 8 and contains_any(text, ['退款', '退货', '物流', '快递', '发货', '型号', '商品', '说明书']):
+                  if len(normalized) <= 10 and contains_any(text, ['退款', '退货', '物流', '快递', '发货', '型号', '商品', '说明书', '货', '货物', '到货']):
                       order_score += 1
 
               if last_intent == 'docs' and last_doc_scene != 'other' and len(normalized) <= 10 and contains_any(text, ['能退吗', '能退', '怎么装', '怎么修', '怎么用', '怎么办', '怎么处理', '怎么安装', '能换新吗', '能修吗', '规则呢']):
@@ -425,6 +428,11 @@ workflow:
           - last_order_no
           value_type: string
           variable: order_no
+        - value_selector:
+          - start
+          - order_no
+          value_type: string
+          variable: start_order_no
         - value_selector:
           - conversation
           - last_intent
@@ -867,7 +875,7 @@ workflow:
                           break
 
               if not order_no and remembered_order_no:
-                  if any(keyword in text for keyword in ['订单', '快递', '物流', '退款', '退货', '发货', '到哪', '到了吗', '什么时候到', '多久到']):
+                  if any(keyword in text for keyword in ['订单', '快递', '物流', '退款', '退货', '发货', '到哪', '到了吗', '什么时候到', '多久到', '货', '货物', '到货']):
                       order_no = remembered_order_no
 
               if not phone_tail:
@@ -1018,9 +1026,9 @@ workflow:
                   )
                   return {'formatted_answer': formatted_answer, 'order_no': order_no}
 
-              if any(kw in query for kw in ['什么时候到', '多久到', '到哪了', '到了吗']):
+              if any(kw in query for kw in ['什么时候到', '多久到', '到哪了', '到了吗', '我的货在哪里', '我的货到哪了', '我的货到了没有', '我的货到了没', '我的货物在哪里', '我的货物到哪了', '我的货物到了没有', '我的货物到了没', '货到了没有', '货到了没', '货物到了没有', '货物到了没', '到货了吗', '快递到哪了', '物流到哪了']):
                   formatted_answer = (
-                      f'我继续帮你看这个订单 {display_order_no}。\n\n'
+                      f'我继续帮你看这个订单 {display_order_no} 的物流情况。\n\n'
                       f'当前状态：{status}\n'
                       f'物流公司：{carrier}\n'
                       f'物流单号：{tracking_no}\n'
