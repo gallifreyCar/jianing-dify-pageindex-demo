@@ -7,6 +7,12 @@
 - `workflow_pageindex_customer_service.yml`
   - Dify 工作流 DSL
   - 这是当前最核心的导入文件
+- `workflow_pageindex_customer_service_optimized.yml`
+  - Claude 调整过的优化版本
+  - 适合做对比测试
+- `archive/`
+  - 历史工作流快照
+  - 只用于回看和对比，不建议直接导入
 - `workflow_pageindex_customer_service.mmd`
   - 工作流结构示意图
 - `pageindex_service.py`
@@ -80,10 +86,19 @@
 
 - `workflow_pageindex_customer_service.yml`
 
+如果你要对比 Claude 调整过的版本，也可以导入：
+
+- `workflow_pageindex_customer_service_optimized.yml`
+
 如果你只是想验证导入能力或做最小调试，也可以试：
 
 - `basic_chatflow_import.yml`
 - `minimal_ascii_chatflow.yml`
+
+不建议直接导入历史快照：
+
+- `archive/workflow_pageindex_customer_service_v3_backup.yml`
+- `archive/workflow_pageindex_customer_service_v4.yml`
 
 ## 测试文档说明
 

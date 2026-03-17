@@ -1,0 +1,1039 @@
+app:
+  description: After-sales customer service workflow with LLM routing, PageIndex docs search, and order API lookup.
+  icon: "\U0001F916"
+  icon_background: '#EFF1F5'
+  mode: advanced-chat
+  name: 售后客服-PageIndex版-v4
+  use_icon_as_answer_icon: false
+dependencies: []
+kind: app
+version: 0.3.1
+workflow:
+  conversation_variables:
+  - description: 最近一次一级意图
+    id: 8b9e08f3-bd50-462e-b47f-5f2a3e32b001
+    name: last_intent
+    selector:
+    - conversation
+    - last_intent
+    value: other
+    value_type: string
+  - description: 最近一次文档场景
+    id: 8b9e08f3-bd50-462e-b47f-5f2a3e32b002
+    name: last_doc_scene
+    selector:
+    - conversation
+    - last_doc_scene
+    value: other
+    value_type: string
+  - description: 最近一次识别到的订单号
+    id: 8b9e08f3-bd50-462e-b47f-5f2a3e32b003
+    name: last_order_no
+    selector:
+    - conversation
+    - last_order_no
+    value: ''
+    value_type: string
+  environment_variables: []
+  features:
+    file_upload:
+      enabled: false
+    opening_statement: '你好，我是售后助手。你可以问售后规则、物流、质保、安装使用，或者查询订单。'
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    # ── start → L1 分类 ──
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: start
+        targetType: code
+      id: e-start-l1
+      source: start
+      sourceHandle: source
+      target: route_l1_code
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    # ── L1 分类 → 记住意图 ──
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: assigner
+      id: e-l1-assign
+      source: route_l1_code
+      sourceHandle: source
+      target: assign_last_intent
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    # ── 记住意图 → L1 分支 ──
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: assigner
+        targetType: if-else
+      id: e-assign-l1if
+      source: assign_last_intent
+      sourceHandle: source
+      target: route_l1_if
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    # ── L1 分支 → order ──
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: if-else
+        targetType: code
+      id: e-l1-order
+      source: route_l1_if
+      sourceHandle: order
+      target: extract_order_params
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    # ── L1 分支 → docs ──
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: if-else
+        targetType: code
+      id: e-l1-docs
+      source: route_l1_if
+      sourceHandle: docs
+      target: route_doc_scene_code
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    # ── L1 分支 → fallback ──
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: if-else
+        targetType: code
+      id: e-l1-fallback
+      source: route_l1_if
+      sourceHandle: 'false'
+      target: fallback_prep
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    # ── 文档场景分类(规则) → 文档场景分类(LLM) ──
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: llm
+      id: e-doc-code-llm
+      source: route_doc_scene_code
+      sourceHandle: source
+      target: route_doc_scene_llm
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    # ── 文档场景分类(LLM) → 合并 ──
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: llm
+        targetType: code
+      id: e-doc-llm-merge
+      source: route_doc_scene_llm
+      sourceHandle: source
+      target: merge_doc_scene
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    # ── 合并 → 记住场景 ──
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: assigner
+      id: e-merge-assign
+      source: merge_doc_scene
+      sourceHandle: source
+      target: assign_last_doc_scene
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    # ── 记住场景 → PageIndex 统一检索 ──
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: assigner
+        targetType: http-request
+      id: e-assign-search
+      source: assign_last_doc_scene
+      sourceHandle: source
+      target: search_pageindex_doc
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    # ── PageIndex 检索 → 解析 ──
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: http-request
+        targetType: code
+      id: e-search-parse
+      source: search_pageindex_doc
+      sourceHandle: source
+      target: parse_pageindex_doc
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    # ── 解析 → 回复-文档 ──
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: answer
+      id: e-parse-answer-doc
+      source: parse_pageindex_doc
+      sourceHandle: source
+      target: answer_doc
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    # ── 订单: 提取参数 → 查询API ──
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: http-request
+      id: e-extract-query
+      source: extract_order_params
+      sourceHandle: source
+      target: query_order_api
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    # ── 订单: 查询API → 解析 ──
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: http-request
+        targetType: code
+      id: e-query-parse-order
+      source: query_order_api
+      sourceHandle: source
+      target: parse_order_api
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    # ── 订单: 解析 → 记住订单号 ──
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: assigner
+      id: e-parse-assign-order
+      source: parse_order_api
+      sourceHandle: source
+      target: assign_last_order_no
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    # ── 订单: 记住订单号 → 回复 ──
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: assigner
+        targetType: answer
+      id: e-assign-answer-order
+      source: assign_last_order_no
+      sourceHandle: source
+      target: answer_order
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    # ── 兜底: 整理 → Agent ──
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: code
+      id: e-fallback-prep-agent
+      source: fallback_prep
+      sourceHandle: source
+      target: fallback_agent
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    # ── 兜底: Agent → 回复 ──
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: answer
+      id: e-fallback-answer
+      source: fallback_agent
+      sourceHandle: source
+      target: answer_fallback
+      targetHandle: target
+      type: custom
+      zIndex: 0
+
+    nodes:
+    # ════════════════════════════════════════════
+    #  START
+    # ════════════════════════════════════════════
+    - data:
+        desc: 输入查单辅助信息
+        selected: false
+        title: 开始
+        type: start
+        variables:
+        - label: 订单号
+          max_length: 64
+          options: []
+          required: false
+          type: text-input
+          variable: order_no
+        - label: 手机后4位
+          max_length: 8
+          options: []
+          required: false
+          type: text-input
+          variable: phone_tail
+      height: 120
+      id: start
+      position:
+        x: 40
+        y: 300
+      positionAbsolute:
+        x: 40
+        y: 300
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+
+    # ════════════════════════════════════════════
+    #  L1 CLASSIFICATION (rule-based code)
+    # ════════════════════════════════════════════
+    - data:
+        code: "import re\n\nLOGISTICS_EXCEPTION_KEYWORDS = ['破损', '少件', '漏发', '签收异常', '不更新']\nORDER_DIRECT_KEYWORDS = ['查订单', '查询订单', '订单号', '订单状态', '退款进度', '催发货', '查一下订单', '帮我查订单', '查一下我订单', '我订单', '物流单号', '订单到哪', '什么时候发货', '什么时候到', '多久到', '到哪了', '到了吗', '快递什么时候到', '物流什么时候到']\nORDER_CONTEXT_KEYWORDS = ['这个订单', '这单', '这一单', '这个快递', '这个物流', '不是已经查到我订单', '为什么还要给你订单', '为什么还要提供', '你不是有订单', '已经查到我订单', '我订单号']\nORDER_PRODUCT_KEYWORDS = ['型号', '商品', '商品名', '这个商品', '这个订单商品', '这款', '这个杯子']\nREFUND_KEYWORDS = ['退货', '退款', '七天无理由', '不想要', '退差价', '退款多久', '退钱', '订单退款', '能退款', '能退吗', '可以退款', '可以退吗', '退款吧', '退货吧', '售后规则', '售后规则呢']\nUSAGE_KEYWORDS = ['安装', '使用', '说明书', '怎么用', '怎么安装', '安装说明', '如何连接', '如何开机', '如何设置', '教程', '步骤', '怎么装', '安装步骤', '装不上', '不会装', '连不上']\nWARRANTY_KEYWORDS = ['质量', '坏了', '损坏', '故障', '异响', '不能用', '失灵', '保修', '质保', '换新', '维修', '能换新吗', '能修吗', '返修', '修理']\nDOCS_GENERIC_KEYWORDS = ['售后', '签收', '规则']\nFOLLOWUP_PREFIXES = ['这个', '那这个', '那', '那怎么', '这怎么', '怎么办', '怎么处理', '然后呢', '那呢', '这个呢']\nDOCS_FOLLOWUP_KEYWORDS = ['能退吗', '可以退吗', '退款呢', '退货呢', '怎么装', '说明书呢', '安装步骤呢', '能换新吗', '能修吗', '怎么修', '质保多久', '保修多久', '规则呢', '售后规则呢']\n\n\ndef contains_any(text: str, keywords: list[str]) -> bool:\n    return any(keyword in text for keyword in keywords)\n\n\ndef main(query: str, order_no: str = '', last_intent: str = 'other', last_doc_scene: str = 'other') -> dict:\n    text = (query or '').strip()\n    normalized = re.sub(r'\\s+', '', text)\n    remembered_order = (order_no or '').strip()\n    last_intent = (last_intent or 'other').strip()\n    last_doc_scene = (last_doc_scene or 'other').strip()\n    if not normalized:\n        return {'text': 'other'}\n\n    order_patterns = [r'\\bJN\\d{12}\\b', r'\\b[A-Z]{2}\\d{8,}\\b']\n    has_order_pattern = any(re.search(pattern, text, re.I) for pattern in order_patterns)\n    has_docs_intent = contains_any(text, REFUND_KEYWORDS + USAGE_KEYWORDS + WARRANTY_KEYWORDS + DOCS_GENERIC_KEYWORDS)\n\n    if has_order_pattern and has_docs_intent:\n        return {'text': 'docs'}\n    if has_order_pattern:\n        return {'text': 'order'}\n\n    if last_intent == 'docs' and last_doc_scene != 'other':\n        if contains_any(text, DOCS_FOLLOWUP_KEYWORDS):\n            return {'text': 'docs'}\n        if contains_any(text, FOLLOWUP_PREFIXES) and len(normalized) <= 12:\n            return {'text': 'docs'}\n        if normalized.endswith('呢') and len(normalized) <= 8:\n            return {'text': 'docs'}\n\n    if contains_any(text, FOLLOWUP_PREFIXES):\n        if last_intent == 'docs' and (contains_any(text, REFUND_KEYWORDS + USAGE_KEYWORDS + WARRANTY_KEYWORDS) or len(normalized) <= 10):\n            return {'text': 'docs'}\n        if last_intent == 'order' and (remembered_order or contains_any(text, ORDER_DIRECT_KEYWORDS + ORDER_CONTEXT_KEYWORDS + ORDER_PRODUCT_KEYWORDS)):\n            return {'text': 'order'}\n\n    order_score = 0\n    docs_score = 0\n\n    if contains_any(text, ORDER_DIRECT_KEYWORDS):\n        order_score += 3\n    if has_docs_intent:\n        docs_score += 3\n\n    if ('物流' in text or '快递' in text or '发货' in text):\n        if contains_any(text, LOGISTICS_EXCEPTION_KEYWORDS):\n            docs_score += 3\n        else:\n            order_score += 2\n\n    if remembered_order:\n        if contains_any(text, ORDER_CONTEXT_KEYWORDS):\n            order_score += 3\n        if contains_any(text, ORDER_PRODUCT_KEYWORDS):\n            order_score += 1\n        if contains_any(text, REFUND_KEYWORDS):\n            docs_score += 2\n        if contains_any(text, USAGE_KEYWORDS + WARRANTY_KEYWORDS):\n            docs_score += 2\n        if normalized in ['什么时候到啊', '什么时候到', '到啊', '到没', '到了吗', '查一下我订单', '查一下我订单吧']:\n            order_score += 3\n        if len(normalized) <= 8 and contains_any(text, ['退款', '退货', '物流', '快递', '发货', '型号', '商品', '说明书']):\n            order_score += 1\n\n    if last_intent == 'docs' and last_doc_scene != 'other' and len(normalized) <= 10 and contains_any(text, ['能退吗', '能退', '怎么装', '怎么修', '怎么用', '怎么办', '怎么处理', '怎么安装', '能换新吗', '能修吗', '规则呢']):\n        docs_score += 2\n\n    if docs_score >= order_score + 1 and docs_score > 0:\n        return {'text': 'docs'}\n    if order_score > 0:\n        return {'text': 'order'}\n\n    if len(normalized) <= 4:\n        return {'text': last_intent if last_intent == 'docs' and last_doc_scene != 'other' else ('order' if last_intent == 'order' and remembered_order else 'other')}\n\n    if re.fullmatch(r'[A-Za-z0-9\\-_/]+', normalized):\n        return {'text': 'other'}\n\n    return {'text': 'other'}\n"
+        code_language: python3
+        desc: 基于关键词规则的一级意图分类
+        outputs:
+          text:
+            children: null
+            type: string
+        selected: false
+        title: 一级分类-规则
+        type: code
+        variables:
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: query
+        - value_selector:
+          - conversation
+          - last_order_no
+          value_type: string
+          variable: order_no
+        - value_selector:
+          - conversation
+          - last_intent
+          value_type: string
+          variable: last_intent
+        - value_selector:
+          - conversation
+          - last_doc_scene
+          value_type: string
+          variable: last_doc_scene
+      height: 100
+      id: route_l1_code
+      position:
+        x: 340
+        y: 300
+      positionAbsolute:
+        x: 340
+        y: 300
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+
+    # ════════════════════════════════════════════
+    #  ASSIGN LAST INTENT
+    # ════════════════════════════════════════════
+    - data:
+        desc: ''
+        items:
+        - input_type: variable
+          operation: over-write
+          value:
+          - route_l1_code
+          - text
+          variable_selector:
+          - conversation
+          - last_intent
+          write_mode: over-write
+        selected: false
+        title: 记住一级意图
+        type: assigner
+        version: '2'
+      height: 84
+      id: assign_last_intent
+      position:
+        x: 340
+        y: 180
+      positionAbsolute:
+        x: 340
+        y: 180
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+
+    # ════════════════════════════════════════════
+    #  L1 IF-ELSE BRANCH
+    # ════════════════════════════════════════════
+    - data:
+        cases:
+        - case_id: order
+          conditions:
+          - comparison_operator: contains
+            id: l1-order-cond
+            value: order
+            varType: string
+            variable_selector:
+            - route_l1_code
+            - text
+          logical_operator: and
+        - case_id: docs
+          conditions:
+          - comparison_operator: contains
+            id: l1-docs-cond
+            value: docs
+            varType: string
+            variable_selector:
+            - route_l1_code
+            - text
+          logical_operator: and
+        desc: ''
+        selected: false
+        title: 一级分支
+        type: if-else
+      height: 150
+      id: route_l1_if
+      position:
+        x: 650
+        y: 300
+      positionAbsolute:
+        x: 650
+        y: 300
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+
+    # ════════════════════════════════════════════
+    #  DOCS PATH: scene classifier (rule-based)
+    # ════════════════════════════════════════════
+    - data:
+        code: "def main(query: str, last_doc_scene: str = 'other') -> dict:\n    text = (query or '').strip()\n    normalized = ''.join(text.split())\n    last_doc_scene = (last_doc_scene or 'other').strip()\n    if not text:\n        return {'text': 'other'}\n\n    refund_keywords = ['退货', '退款', '七天无理由', '不想要', '退差价', '退款多久', '退钱', '订单退款', '能退款', '能退吗', '可以退款', '可以退吗', '售后规则', '售后规则呢', '规则呢', '多久到账']\n    logistics_keywords = ['发货', '催发货', '快递', '签收', '破损', '少件', '漏发', '物流', '不更新', '什么时候到', '多久到', '到哪了']\n    warranty_keywords = ['质量', '坏了', '损坏', '故障', '异响', '不能用', '失灵', '保修', '质保', '换新', '维修', '杯子坏了', '能换新吗', '能修吗', '保修多久', '质保多久', '返修', '修理']\n    usage_keywords = ['安装', '使用', '说明书', '怎么用', '如何连接', '如何开机', '如何设置', '教程', '步骤', '安装说明', '型号', '怎么装', '安装步骤', '装不上', '不会装', '连不上']\n    generic_followups = ['这个', '那这个', '那怎么', '怎么办', '怎么处理', '然后呢', '那呢', '那这个呢', '这个呢']\n\n    if any(keyword in text for keyword in warranty_keywords):\n        return {'text': 'warranty'}\n    if any(keyword in text for keyword in refund_keywords):\n        return {'text': 'refund'}\n    if any(keyword in text for keyword in logistics_keywords):\n        return {'text': 'logistics'}\n    if any(keyword in text for keyword in usage_keywords):\n        return {'text': 'usage'}\n\n    if last_doc_scene in ['refund', 'logistics', 'warranty', 'usage']:\n        if len(normalized) <= 10 and any(keyword in text for keyword in generic_followups):\n            return {'text': last_doc_scene}\n        if len(normalized) <= 8 and normalized.endswith('呢'):\n            return {'text': last_doc_scene}\n\n    return {'text': 'other'}\n"
+        code_language: python3
+        desc: ''
+        outputs:
+          text:
+            children: null
+            type: string
+        selected: false
+        title: 文档场景分类-规则
+        type: code
+        variables:
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: query
+        - value_selector:
+          - conversation
+          - last_doc_scene
+          value_type: string
+          variable: last_doc_scene
+      height: 100
+      id: route_doc_scene_code
+      position:
+        x: 960
+        y: 300
+      positionAbsolute:
+        x: 960
+        y: 300
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+
+    # ════════════════════════════════════════════
+    #  DOCS PATH: scene classifier (DeepSeek LLM)
+    # ════════════════════════════════════════════
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: 使用 DeepSeek 对文档问题进行语义场景分类
+        memory:
+          enabled: false
+          window:
+            enabled: false
+            size: 10
+        model:
+          completion_params:
+            temperature: 0
+            max_tokens: 16
+          mode: chat
+          name: deepseek-chat
+          provider: langgenius/deepseek/deepseek
+        prompt_template:
+        - role: system
+          text: '你是售后客服文档场景分类器。请根据用户问题，只输出一个小写标签，不要输出解释、标点或多余文本。可选标签只有：refund、logistics、warranty、usage、other。
+
+            标签含义：
+            refund：退货退款、售后规则、退款时效、是否能退
+            logistics：发货、物流进度、签收异常、破损、少件、漏发
+            warranty：质量问题、故障、维修、换新、保修、质保
+            usage：安装、使用、说明书、型号对应使用方法
+            other：以上都不属于，或信息不足'
+        - role: user
+          text: '最近一次文档场景：{{#conversation.last_doc_scene#}}
+
+            用户问题：{{#sys.query#}}
+
+            只输出标签。'
+        retry_config:
+          enabled: false
+          exponential_backoff:
+            enabled: false
+            max_interval: 10000
+            multiplier: 2
+          max_retries: 1
+          retry_interval: 1000
+        selected: false
+        structured_output:
+          enabled: false
+        title: 文档场景分类-DeepSeek
+        type: llm
+        variables: []
+        vision:
+          configs:
+            variable_selector: []
+          enabled: false
+      height: 90
+      id: route_doc_scene_llm
+      position:
+        x: 1260
+        y: 180
+      positionAbsolute:
+        x: 1260
+        y: 180
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+
+    # ════════════════════════════════════════════
+    #  DOCS PATH: merge rule + LLM classification
+    # ════════════════════════════════════════════
+    - data:
+        code: "def main(llm_text: str = '', rule_text: str = 'other') -> dict:\n    valid_labels = ['refund', 'logistics', 'warranty', 'usage', 'other']\n    raw = (llm_text or '').strip().lower()\n    rule_text = (rule_text or 'other').strip().lower()\n\n    label = 'other'\n    for item in valid_labels:\n        if raw == item or item in raw:\n            label = item\n            break\n\n    if label in ['refund', 'logistics', 'warranty', 'usage']:\n        return {'text': label}\n    if rule_text in ['refund', 'logistics', 'warranty', 'usage']:\n        return {'text': rule_text}\n    return {'text': 'other'}\n"
+        code_language: python3
+        desc: ''
+        outputs:
+          text:
+            children: null
+            type: string
+        selected: false
+        title: 合并文档场景分类
+        type: code
+        variables:
+        - value_selector:
+          - route_doc_scene_llm
+          - text
+          value_type: string
+          variable: llm_text
+        - value_selector:
+          - route_doc_scene_code
+          - text
+          value_type: string
+          variable: rule_text
+      height: 90
+      id: merge_doc_scene
+      position:
+        x: 1260
+        y: 300
+      positionAbsolute:
+        x: 1260
+        y: 300
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+
+    # ════════════════════════════════════════════
+    #  DOCS PATH: assign last_doc_scene
+    # ════════════════════════════════════════════
+    - data:
+        desc: ''
+        items:
+        - input_type: variable
+          operation: over-write
+          value:
+          - merge_doc_scene
+          - text
+          variable_selector:
+          - conversation
+          - last_doc_scene
+          write_mode: over-write
+        selected: false
+        title: 记住文档场景
+        type: assigner
+        version: '2'
+      height: 84
+      id: assign_last_doc_scene
+      position:
+        x: 1560
+        y: 300
+      positionAbsolute:
+        x: 1560
+        y: 300
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+
+    # ════════════════════════════════════════════
+    #  DOCS PATH: unified PageIndex HTTP search
+    # ════════════════════════════════════════════
+    - data:
+        authorization:
+          config: null
+          type: no-auth
+        body:
+          type: json
+          data:
+          - key: ''
+            type: text
+            value: '{"q":"{{#sys.query#}}","top_k":5,"scene":"{{#merge_doc_scene.text#}}"}'
+        desc: 统一文档检索，scene 由分类器动态传入
+        headers: 'Content-Type:application/json'
+        method: post
+        params: ''
+        retry_config:
+          retry_enabled: false
+          max_retries: 1
+          retry_interval: 1000
+        ssl_verify: true
+        timeout:
+          connect: 10
+          read: 60
+          write: 60
+        title: PageIndex统一检索
+        type: http-request
+        url: http://pageindex_official:8790/search
+        variables: []
+      height: 120
+      id: search_pageindex_doc
+      position:
+        x: 1860
+        y: 300
+      positionAbsolute:
+        x: 1860
+        y: 300
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+
+    # ════════════════════════════════════════════
+    #  DOCS PATH: parse PageIndex response
+    # ════════════════════════════════════════════
+    - data:
+        code: "import json\n\nSCENE_SUFFIX = {\n    'refund': '如需我继续帮你判断是否符合退换条件，也可以把订单号发我。',\n    'logistics': '如果你方便，也可以继续把订单号或异常情况发我，我帮你往下看。',\n    'warranty': '如果你愿意，我也可以继续帮你判断是走换新、维修还是质保。',\n    'usage': '如果你现在方便，也可以把具体型号或报错现象发我，我继续帮你排查。',\n    'other': '如果这个问题还没解决，你也可以补充订单号、照片或更具体的现象，我继续帮你处理。',\n}\n\ndef main(response_json: str, scene: str = 'other') -> dict:\n    scene = (scene or 'other').strip()\n    suffix = SCENE_SUFFIX.get(scene, SCENE_SUFFIX['other'])\n    try:\n        body = json.loads(response_json or '{}')\n    except Exception:\n        return {'answer': (response_json or '暂时没有整理出可直接展示的答案，你可以换个更具体的问法继续问我。') + '\\n\\n' + suffix}\n\n    answer = (body.get('answer') or '').strip()\n    if answer:\n        return {'answer': answer + '\\n\\n' + suffix}\n\n    hits = body.get('hits') or []\n    snippets = []\n    for hit in hits[:3]:\n        title = (hit.get('title') or '').strip()\n        text = (hit.get('text') or hit.get('summary') or '').strip().replace('## ', '')\n        snippet = f'{title}：{text[:120]}'.strip('：')\n        if snippet:\n            snippets.append(snippet)\n\n    if snippets:\n        return {'answer': '我先帮你找到这些相关内容：\\n' + '\\n'.join(f'- {s}' for s in snippets) + '\\n\\n' + suffix}\n\n    return {'answer': '暂时没有整理出可直接展示的答案，你可以换个更具体的问法继续问我。\\n\\n' + suffix}\n"
+        code_language: python3
+        desc: 解析 PageIndex 返回并拼接场景后缀
+        outputs:
+          answer:
+            children: null
+            type: string
+        selected: false
+        title: 解析文档结果
+        type: code
+        variables:
+        - value_selector:
+          - search_pageindex_doc
+          - body
+          value_type: string
+          variable: response_json
+        - value_selector:
+          - merge_doc_scene
+          - text
+          value_type: string
+          variable: scene
+      height: 90
+      id: parse_pageindex_doc
+      position:
+        x: 2160
+        y: 300
+      positionAbsolute:
+        x: 2160
+        y: 300
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+
+    # ════════════════════════════════════════════
+    #  DOCS PATH: unified answer
+    # ════════════════════════════════════════════
+    - data:
+        answer: "{{#parse_pageindex_doc.answer#}}"
+        desc: ''
+        selected: false
+        title: 回复-文档
+        type: answer
+        variables: []
+      height: 105
+      id: answer_doc
+      position:
+        x: 2460
+        y: 300
+      positionAbsolute:
+        x: 2460
+        y: 300
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+
+    # ════════════════════════════════════════════
+    #  ORDER PATH: extract params
+    # ════════════════════════════════════════════
+    - data:
+        code: "import re\n\ndef main(query: str = '', start_order_no: str = '', start_phone_tail: str = '', remembered_order_no: str = '') -> dict:\n    text = (query or '').strip()\n    order_no = (start_order_no or '').strip()\n    phone_tail = (start_phone_tail or '').strip()\n    remembered_order_no = (remembered_order_no or '').strip()\n\n    if not order_no:\n        patterns = [r'\\bJN\\d{12}\\b', r'\\b[A-Z]{2}\\d{8,}\\b']\n        for pattern in patterns:\n            match = re.search(pattern, text, re.I)\n            if match:\n                order_no = match.group(0).upper()\n                break\n\n    if not order_no and remembered_order_no:\n        if any(keyword in text for keyword in ['订单', '快递', '物流', '退款', '退货', '发货', '到哪', '到了吗', '什么时候到', '多久到']):\n            order_no = remembered_order_no\n\n    if not phone_tail:\n        phone_patterns = [\n            r'(?:尾号|手机尾号|手机号后?4位|后四位)[^\\d]*(\\d{4})',\n            r'\\b(\\d{4})\\b',\n        ]\n        for pattern in phone_patterns:\n            match = re.search(pattern, text)\n            if match:\n                phone_tail = match.group(1)\n                break\n\n    return {\n        'order_no': order_no,\n        'phone_tail': phone_tail,\n    }\n"
+        code_language: python3
+        desc: ''
+        outputs:
+          order_no:
+            children: null
+            type: string
+          phone_tail:
+            children: null
+            type: string
+        selected: false
+        title: 提取查单参数
+        type: code
+        variables:
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: query
+        - value_selector:
+          - start
+          - order_no
+          value_type: string
+          variable: start_order_no
+        - value_selector:
+          - start
+          - phone_tail
+          value_type: string
+          variable: start_phone_tail
+        - value_selector:
+          - conversation
+          - last_order_no
+          value_type: string
+          variable: remembered_order_no
+      height: 110
+      id: extract_order_params
+      position:
+        x: 960
+        y: 600
+      positionAbsolute:
+        x: 960
+        y: 600
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+
+    # ════════════════════════════════════════════
+    #  ORDER PATH: HTTP query
+    # ════════════════════════════════════════════
+    - data:
+        authorization:
+          config: null
+          type: no-auth
+        body:
+          type: json
+          data:
+          - key: ''
+            type: text
+            value: '{"order_no":"{{#extract_order_params.order_no#}}","phone_tail":"{{#extract_order_params.phone_tail#}}","user_query":"{{#sys.query#}}"}'
+        desc: ''
+        headers: 'Content-Type:application/json'
+        method: post
+        params: ''
+        retry_config:
+          retry_enabled: false
+          max_retries: 1
+          retry_interval: 1000
+        ssl_verify: true
+        timeout:
+          connect: 10
+          read: 30
+          write: 30
+        title: 查询订单接口
+        type: http-request
+        url: http://jianing_mock:8787/orders/query
+        variables: []
+      height: 120
+      id: query_order_api
+      position:
+        x: 1260
+        y: 600
+      positionAbsolute:
+        x: 1260
+        y: 600
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+
+    # ════════════════════════════════════════════
+    #  ORDER PATH: parse response
+    # ════════════════════════════════════════════
+    - data:
+        code: "import json\n\ndef main(response_json: str, query: str = '') -> dict:\n    try:\n        body = json.loads(response_json or '{}')\n    except Exception:\n        return {'formatted_answer': response_json or '订单接口返回异常，请稍后重试。', 'order_no': ''}\n\n    query = (query or '').strip()\n    order_no = body.get('order_no') or ''\n    display_order_no = order_no or '未知订单号'\n    status = body.get('status') or '未知'\n    items = body.get('items') or []\n    items_text = '、'.join(str(i) for i in items) if isinstance(items, list) and items else '暂无商品信息'\n    carrier = body.get('carrier') or '暂无'\n    tracking_no = body.get('tracking_no') or '暂无'\n    refund_status = body.get('refund_status') or '暂无'\n    latest_progress = body.get('latest_progress') or '暂无'\n\n    if ('为什么' in query and '订单' in query and ('还要' in query or '已经查到' in query)) or ('你不是有订单' in query):\n        formatted_answer = (\n            f'我这边其实已经记住订单 {display_order_no} 了，后面你可以直接继续问物流、退款或售后，不用每次都重新发。\\n\\n'\n            f'当前商品：{items_text}\\n'\n            f'当前状态：{status}\\n'\n            f'最新进度：{latest_progress}'\n        )\n        return {'formatted_answer': formatted_answer, 'order_no': order_no}\n\n    if any(kw in query for kw in ['型号', '商品', '商品名', '这个商品', '这个订单商品', '这款', '这个杯子']):\n        formatted_answer = (\n            f'我这边能看到这单商品是：{items_text}。\\n\\n'\n            f'订单状态：{status}\\n'\n            f'如果你是想问安装说明、使用方法或质保，我也可以继续按这个商品帮你看。'\n        )\n        return {'formatted_answer': formatted_answer, 'order_no': order_no}\n\n    if any(kw in query for kw in ['什么时候到', '多久到', '到哪了', '到了吗']):\n        formatted_answer = (\n            f'我继续帮你看这个订单 {display_order_no}。\\n\\n'\n            f'当前状态：{status}\\n'\n            f'物流公司：{carrier}\\n'\n            f'物流单号：{tracking_no}\\n'\n            f'最新进度：{latest_progress}'\n        )\n        return {'formatted_answer': formatted_answer, 'order_no': order_no}\n\n    formatted_answer = (\n        f'我帮你查到订单 {display_order_no} 了。\\n\\n'\n        f'当前状态：{status}\\n'\n        f'商品：{items_text}\\n'\n        f'物流公司：{carrier}\\n'\n        f'物流单号：{tracking_no}\\n'\n        f'退款状态：{refund_status}\\n'\n        f'最新进度：{latest_progress}\\n\\n'\n        '如果你还想继续处理退款、催发货或售后问题，也可以直接继续说。'\n    )\n    return {'formatted_answer': formatted_answer, 'order_no': order_no}\n"
+        code_language: python3
+        desc: ''
+        outputs:
+          formatted_answer:
+            children: null
+            type: string
+          order_no:
+            children: null
+            type: string
+        selected: false
+        title: 解析订单结果
+        type: code
+        variables:
+        - value_selector:
+          - query_order_api
+          - body
+          value_type: string
+          variable: response_json
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: query
+      height: 90
+      id: parse_order_api
+      position:
+        x: 1560
+        y: 600
+      positionAbsolute:
+        x: 1560
+        y: 600
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+
+    # ════════════════════════════════════════════
+    #  ORDER PATH: assign last_order_no
+    # ════════════════════════════════════════════
+    - data:
+        desc: ''
+        items:
+        - input_type: variable
+          operation: over-write
+          value:
+          - parse_order_api
+          - order_no
+          variable_selector:
+          - conversation
+          - last_order_no
+          write_mode: over-write
+        selected: false
+        title: 记住订单号
+        type: assigner
+        version: '2'
+      height: 84
+      id: assign_last_order_no
+      position:
+        x: 1860
+        y: 600
+      positionAbsolute:
+        x: 1860
+        y: 600
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+
+    # ════════════════════════════════════════════
+    #  ORDER PATH: answer
+    # ════════════════════════════════════════════
+    - data:
+        answer: "{{#parse_order_api.formatted_answer#}}"
+        desc: ''
+        selected: false
+        title: 回复-订单查询
+        type: answer
+        variables: []
+      height: 105
+      id: answer_order
+      position:
+        x: 2160
+        y: 600
+      positionAbsolute:
+        x: 2160
+        y: 600
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+
+    # ════════════════════════════════════════════
+    #  FALLBACK PATH: prep
+    # ════════════════════════════════════════════
+    - data:
+        code: "import re\n\ndef main(query: str = '') -> dict:\n    text = (query or '').strip()\n    normalized = re.sub(r'\\s+', '', text)\n    if not normalized:\n        return {'hint': '空输入'}\n\n    order_patterns = [r'\\bJN\\d{12}\\b', r'\\b[A-Z]{2}\\d{8,}\\b']\n    service_keywords = ['订单', '退款', '退货', '物流', '快递', '签收', '质保', '保修', '维修', '安装', '使用', '说明书', '质量', '故障']\n\n    if any(re.search(pattern, text, re.I) for pattern in order_patterns):\n        return {'hint': text}\n    if any(keyword in text for keyword in service_keywords):\n        return {'hint': text}\n    if len(normalized) <= 4 or re.fullmatch(r'[A-Za-z0-9\\W_]+', normalized):\n        return {'hint': '无明确售后意图的短输入'}\n    return {'hint': '信息不足的模糊输入'}\n"
+        code_language: python3
+        desc: ''
+        outputs:
+          hint:
+            children: null
+            type: string
+        selected: false
+        title: 兜底输入整理
+        type: code
+        variables:
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: query
+      height: 100
+      id: fallback_prep
+      position:
+        x: 960
+        y: 900
+      positionAbsolute:
+        x: 960
+        y: 900
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+
+    # ════════════════════════════════════════════
+    #  FALLBACK PATH: agent
+    # ════════════════════════════════════════════
+    - data:
+        code: "def main(hint: str = '', query: str = '', order_no: str = '') -> dict:\n    hint = (hint or '').strip()\n    query = (query or '').strip()\n    order_no = (order_no or '').strip()\n\n    if order_no:\n        if '订单' in query or '快递' in query or '物流' in query or '退款' in query or '退货' in query:\n            text = f'我这边还记着订单 {order_no}，你可以直接继续问。'\n        elif hint == '无明确售后意图的短输入':\n            text = f'我这边还记着订单 {order_no}，你可以直接问物流、退款或售后。'\n        else:\n            text = '你可以把问题说得具体一点，我继续结合这个订单帮你看。'\n        return {'text': text}\n\n    if hint == '空输入':\n        text = '你好，发我具体问题就行，我来帮你判断。'\n    elif hint == '无明确售后意图的短输入':\n        text = '你好，你可以直接说下遇到的问题，我来帮你分一下。'\n    elif '订单' in query:\n        text = '可以的，你把订单号发我，我先帮你查一下。'\n    elif any(kw in query for kw in ['退款', '退货']):\n        text = '可以，我先帮你看退货退款这类问题。'\n    elif any(kw in query for kw in ['物流', '快递', '签收']):\n        text = '可以，我先帮你看物流或签收这类问题。'\n    elif any(kw in query for kw in ['质量', '故障', '维修', '质保']):\n        text = '可以，我先帮你看质保和维修这类问题。'\n    elif any(kw in query for kw in ['安装', '使用', '说明书']):\n        text = '可以，我先帮你看安装和使用这类问题。'\n    else:\n        text = '你好，你可以把问题说得具体一点，我来帮你判断。'\n    return {'text': text}\n"
+        code_language: python3
+        desc: ''
+        outputs:
+          text:
+            children: null
+            type: string
+        selected: false
+        title: 兜底Agent
+        type: code
+        variables:
+        - value_selector:
+          - fallback_prep
+          - hint
+          value_type: string
+          variable: hint
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: query
+        - value_selector:
+          - start
+          - order_no
+          value_type: string
+          variable: order_no
+      height: 100
+      id: fallback_agent
+      position:
+        x: 1260
+        y: 900
+      positionAbsolute:
+        x: 1260
+        y: 900
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+
+    # ════════════════════════════════════════════
+    #  FALLBACK PATH: answer
+    # ════════════════════════════════════════════
+    - data:
+        answer: "{{#fallback_agent.text#}}\n\n我目前可以帮你处理这些：\n查订单：例如\"帮我查订单 JN202603150001\"\n退货退款：例如\"退货规则是什么\"\n物流签收：例如\"物流破损怎么处理\"\n质保维修：例如\"质量不行怎么办\"\n安装使用：例如\"怎么安装\"\n\n如果你愿意，也可以直接把完整问题发我，我继续帮你判断。"
+        desc: ''
+        selected: false
+        title: 回复-兜底
+        type: answer
+        variables: []
+      height: 120
+      id: answer_fallback
+      position:
+        x: 1560
+        y: 900
+      positionAbsolute:
+        x: 1560
+        y: 900
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.5
