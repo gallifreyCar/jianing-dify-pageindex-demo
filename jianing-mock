@@ -1,0 +1,36 @@
+#!/bin/zsh
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+COMPOSE_FILE="$SCRIPT_DIR/dify_customer_service/docker-compose.mock.yml"
+
+if ! command -v docker-compose >/dev/null 2>&1; then
+  echo "docker-compose not found" >&2
+  exit 1
+fi
+
+action="${1:-status}"
+
+case "$action" in
+  start)
+    docker-compose -f "$COMPOSE_FILE" up -d
+    ;;
+  stop)
+    docker-compose -f "$COMPOSE_FILE" down
+    ;;
+  restart)
+    docker-compose -f "$COMPOSE_FILE" down
+    docker-compose -f "$COMPOSE_FILE" up -d
+    ;;
+  status)
+    docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' | rg '(^NAMES|jianing_mock)'
+    ;;
+  logs)
+    docker logs --tail 100 -f jianing_mock
+    ;;
+  *)
+    echo "Usage: $(basename "$0") {start|stop|restart|status|logs}" >&2
+    exit 1
+    ;;
+esac
